@@ -120,6 +120,23 @@ public abstract class Hero extends Entity {
         experience += amount;
     }
 
+    public void applyPotionEffect(int amount, java.util.Set<String> stats) {
+        if (stats == null || stats.isEmpty() || amount <= 0) {
+            return;
+        }
+        for (String stat : stats) {
+            switch (stat.toLowerCase()) {
+                case "health" -> heal(amount);
+                case "mana" -> gainMana(amount);
+                case "strength" -> setStrength(getStrength() + amount);
+                case "dexterity" -> setDexterity(getDexterity() + amount);
+                case "agility" -> setAgility(getAgility() + amount);
+                default -> {
+                }
+            }
+        }
+    }
+
     public boolean levelUpIfReady() {
         boolean leveled = false;
         while (experience >= experienceThreshold()) {

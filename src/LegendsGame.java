@@ -7,6 +7,8 @@ import java.util.Random;
 import java.util.Scanner;
 
 public class LegendsGame {
+    public enum GameState { EXPLORING, MAP, MARKET, INVENTORY, BATTLE }
+
     private final HeroFactory heroFactory = new HeroFactory();
     private final MonsterFactory monsterFactory = new MonsterFactory();
     private final MarketFactory marketFactory = new MarketFactory();
@@ -16,6 +18,7 @@ public class LegendsGame {
     private Party party;
     private GameMap map;
     private final Random random = new Random();
+    private GameState state = GameState.EXPLORING;
 
     public static void main(String[] args) {
         LegendsGame game = new LegendsGame();
@@ -112,18 +115,64 @@ public class LegendsGame {
     private void gameLoop() {
         Scanner scanner = new Scanner(System.in);
         System.out.println("Game start! Use W/A/S/D to move, Q to quit, M to view map.");
+        System.out.println("Use W/A/S/D to move around the world.");
+        map.render();
         boolean running = true;
         while (running) {
             System.out.print("> ");
             String input = scanner.nextLine().trim().toLowerCase();
-            switch (input) {
-                case "w" -> attemptMove(-1, 0);
-                case "s" -> attemptMove(1, 0);
-                case "a" -> attemptMove(0, -1);
-                case "d" -> attemptMove(0, 1);
-                case "m" -> map.render();
-                case "q" -> running = false;
-                default -> System.out.println("Commands: W/A/S/D move, M map, Q quit");
+            switch (state) {
+                case EXPLORING -> {
+                    switch (input) {
+                        case "w" -> attemptMove(-1, 0);
+                        case "s" -> attemptMove(1, 0);
+                        case "a" -> attemptMove(0, -1);
+                        case "d" -> attemptMove(0, 1);
+                        case "m" -> {
+                            state = GameState.MAP;
+                            map.render();
+                        }
+                        case "i" -> {
+                            state = GameState.INVENTORY;
+                            showInventory();
+                            System.out.println("Inventory opened. Press B to go back.");
+                        }
+                        case "q" -> {
+                            System.out.print("Are you sure? (y/n): ");
+                            String ans = scanner.nextLine().trim().toLowerCase();
+                            if (ans.equals("y")) {
+                                running = false;
+                            }
+                        }
+                        default -> System.out.println("Commands: W/A/S/D move, M map, I inventory, Q quit");
+                    }
+                }
+                case MAP -> {
+                    if (input.equals("b") || input.equals("q")) {
+                        state = GameState.EXPLORING;
+                    } else {
+                        System.out.println("Map view. Press B to return to exploring.");
+                    }
+                }
+                case MARKET -> {
+                    // market loop handles input; fallback here
+                    if (input.equals("b")) {
+                        state = GameState.EXPLORING;
+                    }
+                }
+                case INVENTORY -> {
+                    if (input.equals("b")) {
+                        state = GameState.EXPLORING;
+                    } else if (input.equals("q")) {
+                        state = GameState.EXPLORING;
+                    } else {
+                        showInventory();
+                        System.out.println("Press B to return to exploring.");
+                    }
+                }
+                case BATTLE -> {
+                    // battle managed inside battleLoop
+                }
             }
         }
         System.out.println("Goodbye!");
@@ -134,8 +183,12 @@ public class LegendsGame {
             System.out.println("Cannot move there.");
             return;
         }
+        map.render();
+        System.out.printf("Moved to (%d, %d).%n", map.getHeroRow(), map.getHeroCol());
         Tile tile = map.getCurrentTile();
         if (tile instanceof MarketTile marketTile) {
+            System.out.println("Entered Market.");
+            state = GameState.MARKET;
             enterMarket(marketTile.getMarket());
         } else if (tile instanceof CommonTile) {
             maybeBattle();
@@ -147,7 +200,7 @@ public class LegendsGame {
     private void enterMarket(Market market) {
         Scanner scanner = new Scanner(System.in);
         boolean shopping = true;
-        System.out.println("Entered Market. Commands: list, buy, sell, exit");
+        System.out.println("Entered Market. Commands: list, buy, sell, b (back)");
         while (shopping) {
             System.out.print("Market> ");
             String cmd = scanner.nextLine().trim().toLowerCase();
@@ -155,8 +208,11 @@ public class LegendsGame {
                 case "list" -> listMarket(market);
                 case "buy" -> doBuy(market, scanner);
                 case "sell" -> doSell(market, scanner);
-                case "exit" -> shopping = false;
-                default -> System.out.println("Commands: list, buy, sell, exit");
+                case "exit", "b" -> {
+                    shopping = false;
+                    state = GameState.EXPLORING;
+                }
+                default -> System.out.println("Commands: list, buy, sell, b");
             }
         }
     }
@@ -277,7 +333,12 @@ public class LegendsGame {
         System.out.println("A battle begins!");
         int highestLevel = party.getHeroes().stream().mapToInt(Hero::getLevel).max().orElse(1);
         List<Monster> foes = monsterFactory.spawnForLevel(monsterPool, highestLevel, party.getHeroes().size());
+        if (foes.isEmpty()) {
+            System.out.println("No monsters could be found to match your level. You feel a strange calm...");
+            return;
+        }
         Battle battle = new Battle(party, foes);
+        state = GameState.BATTLE;
         battleLoop(battle);
         if (party.isDefeated()) {
             System.out.println("Party defeated. Game over.");
@@ -290,9 +351,43 @@ public class LegendsGame {
                 if (!h.isFainted()) {
                     h.addGold(rewardGold);
                     h.addExperience(rewardExp);
+                    if (h.levelUpIfReady()) {
+                        System.out.println(h.getName() + " leveled up to " + h.getLevel());
+                    }
                 }
             }
             System.out.println("Victory! Earned gold and experience.");
+        }
+        state = GameState.EXPLORING;
+    }
+
+    private void showInventory() {
+        System.out.println("=== INVENTORY ===");
+        List<Hero> heroes = party.getHeroes();
+        for (int i = 0; i < heroes.size(); i++) {
+            Hero h = heroes.get(i);
+            System.out.printf("[%d] %s (HP:%d/%d Mana:%d/%d Gold:%d)%n", i, h.getName(), h.getHealth(),
+                    h.getMaxHealth(), h.getMana(), h.getMaxMana(), h.getGold());
+            System.out.println("  Weapons:");
+            printItems(h.getInventory().getByType(Weapon.class));
+            System.out.println("  Armors:");
+            printItems(h.getInventory().getByType(Armor.class));
+            System.out.println("  Potions:");
+            printItems(h.getInventory().getByType(Potion.class));
+            System.out.println("  Spells:");
+            printItems(h.getInventory().getByType(Spell.class));
+        }
+    }
+
+    private void printItems(List<? extends Item> items) {
+        if (items.isEmpty()) {
+            System.out.println("    (none)");
+            return;
+        }
+        for (int j = 0; j < items.size(); j++) {
+            Item item = items.get(j);
+            System.out.printf("    %d) %s (lvl %d, price %d)%n", j, item.getName(), item.getRequiredLevel(),
+                    item.getPrice());
         }
     }
 
@@ -300,20 +395,22 @@ public class LegendsGame {
         Scanner scanner = new Scanner(System.in);
         while (!battle.isOver()) {
             for (Hero hero : party.aliveHeroes()) {
-                System.out.printf("Hero %s turn. Actions: attack, spell, skip%n", hero.getName());
-                String action = scanner.nextLine().trim().toLowerCase();
-                switch (action) {
-                    case "attack" -> {
-                        Optional<Monster> target = battleTarget(battle);
+                int choice = promptBattleChoice(scanner, hero);
+                switch (choice) {
+                    case 1 -> {
+                        Optional<Monster> target = battleTarget(battle, scanner);
                         target.ifPresent(t -> battle.heroAttack(hero, t));
                     }
-                    case "spell" -> {
+                    case 2 -> {
                         Spell spell = chooseSpell(hero, scanner);
-                        Optional<Monster> target = battleTarget(battle);
+                        Optional<Monster> target = battleTarget(battle, scanner);
                         if (spell != null && target.isPresent()) {
                             battle.castSpell(hero, spell, target.get());
                         }
                     }
+                    case 3 -> usePotion(hero, scanner);
+                    case 4 -> equip(hero, scanner);
+                    case 5 -> System.out.println("Turn skipped.");
                     default -> System.out.println("Turn skipped.");
                 }
             }
@@ -327,35 +424,151 @@ public class LegendsGame {
         }
     }
 
-    private Optional<Monster> battleTarget(Battle battle) {
+    private int promptBattleChoice(Scanner scanner, Hero hero) {
+        while (true) {
+            System.out.printf("Hero %s turn:%n", hero.getName());
+            System.out.println("1) Attack");
+            System.out.println("2) Cast Spell");
+            System.out.println("3) Use Potion");
+            System.out.println("4) Equip");
+            System.out.println("5) Skip Turn");
+            System.out.print("Enter choice: ");
+            String line = scanner.nextLine().trim();
+            try {
+                int val = Integer.parseInt(line);
+                if (val >= 1 && val <= 5) {
+                    return val;
+                }
+            } catch (NumberFormatException ignored) {
+            }
+            System.out.println("Invalid choice. Please enter a number 1-5.");
+        }
+    }
+
+    private Optional<Monster> battleTarget(Battle battle, Scanner scanner) {
         List<Monster> alive = battle.getMonsters().stream().filter(m -> !m.isFainted()).toList();
         if (alive.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(alive.get(0));
+        while (true) {
+            System.out.println("Choose target:");
+            for (int i = 0; i < alive.size(); i++) {
+                Monster m = alive.get(i);
+                System.out.printf("%d) %s HP:%d/%d DEF:%d%n", i, m.getName(), m.getHealth(), m.getMaxHealth(), m.getDefense());
+            }
+            System.out.print("Enter index: ");
+            String line = scanner.nextLine().trim();
+            try {
+                int idx = Integer.parseInt(line);
+                if (idx >= 0 && idx < alive.size()) {
+                    return Optional.of(alive.get(idx));
+                }
+            } catch (NumberFormatException ignored) {
+            }
+            System.out.println("Invalid target. Try again.");
+        }
     }
 
     private Spell chooseSpell(Hero hero, Scanner scanner) {
         List<Spell> spells = hero.getInventory().getByType(Spell.class).stream().map(s -> (Spell) s).toList();
-        for (int i = 0; i < spells.size(); i++) {
-            Spell s = spells.get(i);
-            System.out.printf("%d) %s dmg:%d mana:%d type:%s%n", i, s.getName(), s.getBaseDamage(), s.getManaCost(),
-                    s.getDebuffType());
-        }
         if (spells.isEmpty()) {
             System.out.println("No spells.");
             return null;
         }
-        System.out.print("Choose spell index: ");
-        String line = scanner.nextLine().trim();
-        try {
-            int idx = Integer.parseInt(line);
-            if (idx >= 0 && idx < spells.size()) {
-                return spells.get(idx);
+        while (true) {
+            System.out.println("Choose spell:");
+            for (int i = 0; i < spells.size(); i++) {
+                Spell s = spells.get(i);
+                System.out.printf("%d) %s dmg:%d mana:%d type:%s%n", i, s.getName(), s.getBaseDamage(), s.getManaCost(),
+                        s.getDebuffType());
             }
-        } catch (NumberFormatException ignored) {
+            System.out.print("Enter index: ");
+            String line = scanner.nextLine().trim();
+            try {
+                int idx = Integer.parseInt(line);
+                if (idx >= 0 && idx < spells.size()) {
+                    return spells.get(idx);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+            System.out.println("Invalid spell. Try again.");
         }
-        return null;
+    }
+
+    private void usePotion(Hero hero, Scanner scanner) {
+        List<Potion> potions = hero.getInventory().getByType(Potion.class).stream().map(p -> (Potion) p).toList();
+        if (potions.isEmpty()) {
+            System.out.println("No potions.");
+            return;
+        }
+        while (true) {
+            System.out.println("Choose potion:");
+            for (int i = 0; i < potions.size(); i++) {
+                Potion p = potions.get(i);
+                System.out.printf("%d) %s +%d %s%n", i, p.getName(), p.getEffectAmount(), p.getAffectedStats());
+            }
+            System.out.print("Enter index: ");
+            String line = scanner.nextLine().trim();
+            try {
+                int idx = Integer.parseInt(line);
+                if (idx >= 0 && idx < potions.size()) {
+                    Potion p = potions.get(idx);
+                    hero.applyPotionEffect(p.getEffectAmount(), p.getAffectedStats());
+                    hero.getInventory().remove(p);
+                    System.out.println("Used " + p.getName());
+                    return;
+                }
+            } catch (NumberFormatException ignored) {
+            }
+            System.out.println("Invalid potion. Try again.");
+        }
+    }
+
+    private void equip(Hero hero, Scanner scanner) {
+        List<Weapon> weapons = hero.getInventory().getByType(Weapon.class).stream().map(w -> (Weapon) w).toList();
+        List<Armor> armors = hero.getInventory().getByType(Armor.class).stream().map(a -> (Armor) a).toList();
+        System.out.println("Equip menu:");
+        if (!weapons.isEmpty()) {
+            System.out.println("Weapons:");
+            for (int i = 0; i < weapons.size(); i++) {
+                Weapon w = weapons.get(i);
+                System.out.printf("%d) %s dmg:%d hands:%d%n", i, w.getName(), w.getDamage(), w.getHandsRequired());
+            }
+            System.out.print("Weapon index (blank to skip): ");
+            String line = scanner.nextLine().trim();
+            if (!line.isEmpty()) {
+                try {
+                    int idx = Integer.parseInt(line);
+                    if (idx >= 0 && idx < weapons.size()) {
+                        hero.getEquipment().equipWeapon(weapons.get(idx));
+                        System.out.println("Equipped weapon: " + weapons.get(idx).getName());
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        if (!armors.isEmpty()) {
+            System.out.println("Armors:");
+            for (int i = 0; i < armors.size(); i++) {
+                Armor a = armors.get(i);
+                System.out.printf("%d) %s red:%d%n", i, a.getName(), a.getDamageReduction());
+            }
+            System.out.print("Armor index (blank to skip): ");
+            String line = scanner.nextLine().trim();
+            if (!line.isEmpty()) {
+                try {
+                    int idx = Integer.parseInt(line);
+                    if (idx >= 0 && idx < armors.size()) {
+                        hero.getEquipment().equipArmor(armors.get(idx));
+                        System.out.println("Equipped armor: " + armors.get(idx).getName());
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        if (weapons.isEmpty() && armors.isEmpty()) {
+            System.out.println("No equipment available.");
+        }
     }
 
     private Hero randomAliveHero() {

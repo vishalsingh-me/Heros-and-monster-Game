@@ -23,6 +23,15 @@ public class MonsterFactory {
         List<Monster> candidates = pool.stream()
                 .filter(m -> m.getLevel() == level)
                 .toList();
+        if (candidates.isEmpty()) {
+            int closestDiff = pool.stream()
+                    .mapToInt(m -> Math.abs(m.getLevel() - level))
+                    .min()
+                    .orElse(Integer.MAX_VALUE);
+            candidates = pool.stream()
+                    .filter(m -> Math.abs(m.getLevel() - level) == closestDiff)
+                    .toList();
+        }
         List<Monster> spawned = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             if (candidates.isEmpty()) {

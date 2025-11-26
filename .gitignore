@@ -1,0 +1,9 @@
+# Ignore all .out files and any out/ directories
+*.out
+out/
+*.class
+
+# macOS Finder file and common misspellings
+.DS_Store
+DS_strore
+DS_store
