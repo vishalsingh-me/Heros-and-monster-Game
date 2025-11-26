@@ -28,9 +28,14 @@ public class Battle {
         int base = hero.getStrength() + weaponDamage;
         int damage = Math.max(1, base - target.getDefense());
         if (rollDodge(target.getDodgeChance())) {
+            System.out.printf("%s attacks %s but it dodges!%n", hero.getName(), target.getName());
             return;
         }
+        int before = target.getHealth();
         target.takeDamage(damage);
+        int dealt = before - target.getHealth();
+        System.out.printf("%s hits %s for %d damage (%d -> %d)%n",
+                hero.getName(), target.getName(), dealt, before, target.getHealth());
     }
 
     public void monsterAttack(Monster monster, Hero target) {
@@ -43,9 +48,14 @@ public class Battle {
             damage = Math.max(0, damage - armor.getDamageReduction());
         }
         if (rollDodgeChance(target.getAgility())) {
+            System.out.printf("%s attacks %s but they dodge!%n", monster.getName(), target.getName());
             return;
         }
+        int before = target.getHealth();
         target.takeDamage(damage);
+        int dealt = before - target.getHealth();
+        System.out.printf("%s hits %s for %d damage (%d -> %d)%n",
+                monster.getName(), target.getName(), dealt, before, target.getHealth());
     }
 
     public void castSpell(Hero hero, Spell spell, Monster target) {
@@ -53,15 +63,22 @@ public class Battle {
             return;
         }
         if (!hero.hasManaFor(spell.getManaCost())) {
+            System.out.printf("%s lacks mana for %s.%n", hero.getName(), spell.getName());
             return;
         }
         hero.spendMana(spell.getManaCost());
         int damage = spell.getBaseDamage() + (int) (hero.getDexterity() * 0.1);
         if (rollDodge(target.getDodgeChance())) {
+            System.out.printf("%s casts %s but %s dodges!%n", hero.getName(), spell.getName(), target.getName());
             return;
         }
+        int before = target.getHealth();
         target.takeDamage(damage);
         applyDebuff(spell, target);
+        int dealt = before - target.getHealth();
+        System.out.printf("%s casts %s on %s for %d damage (%d -> %d) with debuff %s%n",
+                hero.getName(), spell.getName(), target.getName(), dealt, before, target.getHealth(),
+                spell.getDebuffType());
     }
 
     private void applyDebuff(Spell spell, Monster target) {
