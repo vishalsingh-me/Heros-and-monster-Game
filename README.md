@@ -20,7 +20,6 @@ Console, turn-based RPG built for an OOP assignment. You form a small party of h
 ---
 
 ## Requirements
-- Java 17+ (uses modern language features)
 - Bash shell to run `run.sh`
 
 ---
