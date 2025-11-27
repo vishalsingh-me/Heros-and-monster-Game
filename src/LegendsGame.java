@@ -28,12 +28,31 @@ public class LegendsGame {
     public void run() {
         try {
             loadData();
+            printIntro();
             selectHeroes();
             setupMap();
             gameLoop();
         } catch (IOException e) {
             System.out.println("Failed to load game data: " + e.getMessage());
         }
+    }
+
+    private void printIntro() {
+        System.out.println("====================================");
+        System.out.println("   LEGENDS: MONSTERS AND HEROES");
+        System.out.println("====================================");
+        System.out.println("Welcome! Build a team of heroes, explore the map, visit markets, and battle monsters.");
+        System.out.println();
+        System.out.println("How to play:");
+        System.out.println(" - Move: W/A/S/D");
+        System.out.println(" - Map:  M (view map)");
+        System.out.println(" - Inventory: I (view what you carry)");
+        System.out.println(" - Market: Step on M tiles to shop (list, buy, sell, b to exit)");
+        System.out.println(" - Battles: Choose actions (Attack/Spell/Potion/Equip/Skip), then target by index");
+        System.out.println(" - Quit: Q (with confirmation)");
+        System.out.println();
+        System.out.println("Press Enter to continue...");
+        new java.util.Scanner(System.in).nextLine();
     }
 
     private void loadData() throws IOException {
