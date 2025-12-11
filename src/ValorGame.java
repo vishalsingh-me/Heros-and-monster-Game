@@ -1,5 +1,23 @@
+/**
+ * ValorGame orchestrates the Legends of Valor MOBA-style mode.
+ * It coordinates map setup, hero/monster turns, movement/combat rules, market access,
+ * and victory conditions across the three-lane board.
+ *
+ * Author: Codex (cleanup and rule refinements)
+ *
+ * Core rules summary:
+ * - Heroes push north from Hero Nexus (row 7) toward Monster Nexus (row 0); monsters push south.
+ * - Heroes attack at range 1; spells at range 2; monsters advance unless blocked by heroes.
+ * - Market only at Hero Nexus; teleport only from Hero Nexus to an adjacent tile of an ally in another lane.
+ * - Recall returns a hero to their spawn tile with partial restore and can be used once per turn.
+ * - Q at any prompt exits back to the main menu.
+ *
+ * High-level algorithm:
+ * - Initialize map and spawn heroes/monsters.
+ * - For each round: print header, process each hero turn (movement/combat/shop), process monster turns,
+ *   resolve respawns/regeneration/spawns, and check win conditions.
+ */
 import java.io.IOException;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -16,6 +34,8 @@ public class ValorGame {
     private int round;
     private boolean gameOver;
     private final Random random = new Random();
+    private final Set<Hero> recallUsedThisRound = new HashSet<Hero>();
+    private boolean quitRequested;
 
     // Configuration
     private static final int MONSTER_SPAWN_RATE = 8; // Monsters spawn every 8 rounds
@@ -51,11 +71,13 @@ public class ValorGame {
 
     public void start() {
         System.out.println("Welcome to Legends of Valor!");
+        showIntro();
         initializeGame();
 
         while (!gameOver) {
             round++;
-            System.out.println("\n=== ROUND " + round + " ===");
+            recallUsedThisRound.clear();
+            System.out.println("\n========== ROUND " + round + " ==========");
 
             // 1. Hero Turn
             processHeroTurn();
@@ -72,7 +94,42 @@ public class ValorGame {
             // 3. End of Round Updates (Respawn, Regen, etc.)
             endOfRound();
         }
-        System.out.println("Game Over!");
+        if (quitRequested) {
+            System.out.println("Exited to main menu.");
+        } else {
+            System.out.println("Game Over!");
+        }
+    }
+
+    private void showIntro() {
+        System.out.println();
+        System.out.println("+======================================+");
+        System.out.println("|          LEGENDS OF VALOR            |");
+        System.out.println("+======================================+");
+        System.out.println("|  Push through three lanes, break     |");
+        System.out.println("|  enemy lines, and reach their nexus. |");
+        System.out.println("+======================================+");
+        System.out.println();
+        System.out.println("Exploration: Advance up lanes, respect obstacles, and hold your nexus.");
+        System.out.println("Combat: Move into range, use basic attacks (F) or spells (C) to drop monsters.");
+        System.out.println("Potions & Spells: Potions give instant stat boosts; spells deal damage and debuff foes.");
+        System.out.println("Level-up: Earn gold/exp from kills; shop at your nexus to gear up and grow stronger.");
+        System.out.println();
+        System.out.println("Controls:");
+        System.out.println("  W/A/S/D - Move");
+        System.out.println("  F - Basic attack");
+        System.out.println("  C - Cast spell");
+        System.out.println("  T - Teleport to ally lane");
+        System.out.println("  R - Recall to your nexus");
+        System.out.println("  P - Use potion");
+        System.out.println("  E - Equip gear");
+        System.out.println("  I - Hero info");
+        System.out.println("  M - Market (when on your nexus)");
+        System.out.println("  Q - Quit to menu");
+        System.out.println();
+        System.out.print("Press ENTER to begin...");
+        scanner.nextLine();
+        System.out.println();
     }
 
     private void initializeGame() {
@@ -95,6 +152,9 @@ public class ValorGame {
         spawnMonsters();
     }
 
+    /**
+     * Spawns one monster per lane at the top, finding the nearest free tile in that lane if the spawn is blocked.
+     */
     private void spawnMonsters() {
         // New monsters have a level equal to highest level among the 3 heroes
         int maxHeroLevel = 1;
@@ -107,22 +167,25 @@ public class ValorGame {
         int[] spawnCols = {1, 4, 7}; // Right side of each lane (Top of map)
 
         for (int col : spawnCols) {
-            ValorTile tile = map.getTile(0, col);
-            // Only spawn if spot is free of monsters
-            if (!tile.hasMonster()) {
-                List<Monster> candidates = monsterFactory.spawnForLevel(globalMonsterPool, maxHeroLevel, 1);
-                if (!candidates.isEmpty()) {
-                    Monster m = candidates.get(0);
-                    tile.setMonster(m);
-                    monsters.add(m);
-                    System.out.println("A wild " + m.getName() + " appeared in " + Lane.getLaneForCol(col));
-                }
+            ValorTile spawnTile = findSpawnTileInLane(col);
+            List<Monster> candidates = monsterFactory.spawnForLevel(globalMonsterPool, maxHeroLevel, 1);
+            if (!candidates.isEmpty() && spawnTile != null) {
+                Monster m = candidates.get(0);
+                spawnTile.setMonster(m);
+                monsters.add(m);
+                System.out.println("A wild " + m.getName() + " appeared in " + Lane.getLaneForCol(col));
+            } else if (spawnTile == null) {
+                System.out.println("No space to spawn a monster in lane " + Lane.getLaneForCol(col));
             }
         }
     }
 
     // --- HERO TURN LOGIC ---
 
+    /**
+     * Handles a full round of hero actions, iterating each alive hero once.
+     * Manages movement, combat, shopping access, skip/quit handling, and ensures menu prompts stay concise.
+     */
     private void processHeroTurn() {
         for (Hero hero : heroes) {
             if (hero.isFainted()) {
@@ -133,19 +196,23 @@ public class ValorGame {
             System.out.println("\nTurn: " + hero.getName() + " (" + getHeroLocationString(hero) + ")");
             boolean actionTaken = false;
 
-            while (!actionTaken) {
+            while (!actionTaken && !gameOver) {
                 // Dynamic Menu: Show Market if on Nexus
                 ValorTile tile = findHeroTile(hero);
-                boolean onNexus = (tile != null && tile.getType() == TileType.NEXUS);
+                boolean onHeroNexus = (tile != null && isHeroOnHeroNexus(tile));
 
-                System.out.print("Actions: (W/A/S/D) Move | (F) Attack | (C) Cast Spell | (T) Teleport | (R) Recall | (P) Potion | (E) Equip | (I) Info");
-                if (onNexus) {
-                    System.out.print(" | (M) Market");
+                System.out.println("Actions: W/A/S/D Move | F Attack | C Spell | T Teleport | R Recall | P Potion | E Equip | I Info | K Skip");
+                System.out.print("         ");
+                if (onHeroNexus) {
+                    System.out.print("M Market | ");
                 }
-                System.out.println(" | (Q) Quit");
+                System.out.println("Q Quit");
 
                 System.out.print("> ");
                 String input = scanner.nextLine().trim().toUpperCase();
+                if (handleQuitInput(input)) {
+                    return;
+                }
 
                 if ("W".equals(input)) {
                     actionTaken = attemptMove(hero, -1, 0);
@@ -168,18 +235,18 @@ public class ValorGame {
                 } else if ("E".equals(input)) {
                     actionTaken = attemptEquip(hero);
                 } else if ("M".equals(input)) {
-                    if (onNexus) {
+                    if (onHeroNexus) {
                         visitMarket(hero);
                         // Buying/selling do not count as actions
                     } else {
-                        System.out.println("Must be at Nexus to shop.");
+                        System.out.println("Must be at Hero Nexus to shop.");
                     }
                 } else if ("I".equals(input)) {
                     System.out.println(hero.getName() + ": HP " + hero.getHealth() + "/" + hero.getMaxHealth()
                             + ", Mana " + hero.getMana() + ", Gold " + hero.getGold());
-                } else if ("Q".equals(input)) {
-                    System.out.println("Quitting game...");
-                    System.exit(0);
+                } else if ("K".equals(input)) {
+                    System.out.println("Turn skipped.");
+                    actionTaken = true;
                 } else {
                     System.out.println("Invalid command.");
                 }
@@ -187,6 +254,9 @@ public class ValorGame {
         }
     }
 
+    /**
+     * Attempts to move the hero by the provided delta if the path is accessible and not blocked by monsters.
+     */
     private boolean attemptMove(Hero hero, int dRow, int dCol) {
         ValorTile currentTile = findHeroTile(hero);
         if (currentTile == null) {
@@ -195,6 +265,13 @@ public class ValorGame {
 
         int newRow = currentTile.getRow() + dRow;
         int newCol = currentTile.getCol() + dCol;
+
+        Lane oldLane = Lane.getLaneForCol(currentTile.getCol());
+        Lane newLane = Lane.getLaneForCol(newCol);
+        if (newLane != null && oldLane != newLane) {
+            System.out.println("You cannot leave your lane except by teleport.");
+            return false;
+        }
 
         if (!map.isValidCoordinate(newRow, newCol)) {
             System.out.println("Cannot move out of bounds.");
@@ -207,6 +284,9 @@ public class ValorGame {
         if (targetTile.getType() == TileType.OBSTACLE) {
             System.out.print("Path blocked by Obstacle. Destroy it? (y/n): ");
             String ans = scanner.nextLine().trim();
+            if (handleQuitInput(ans)) {
+                return false;
+            }
             if (ans.equalsIgnoreCase("y")) {
                 targetTile.setType(TileType.PLAIN);
                 System.out.println("Obstacle removed! (Turn consumed)");
@@ -275,9 +355,12 @@ public class ValorGame {
         return false;
     }
 
+    /**
+     * Executes a basic attack with range 1 (orthogonal/diagonal) if a monster is in reach.
+     */
     private boolean attemptAttack(Hero hero) {
         ValorTile currentTile = findHeroTile(hero);
-        List<Monster> targets = getTargetsInRange(currentTile);
+        List<Monster> targets = getMonstersInRange(currentTile, 1);
 
         if (targets.isEmpty()) {
             System.out.println("No monsters in range.");
@@ -293,7 +376,11 @@ public class ValorGame {
             }
             try {
                 System.out.print("> ");
-                int idx = Integer.parseInt(scanner.nextLine().trim());
+                String line = scanner.nextLine().trim();
+                if (handleQuitInput(line)) {
+                    return false;
+                }
+                int idx = Integer.parseInt(line);
                 if (idx >= 0 && idx < targets.size()) {
                     target = targets.get(idx);
                 }
@@ -327,6 +414,9 @@ public class ValorGame {
         return true;
     }
 
+    /**
+     * Casts a spell at range 2, applying damage and debuff if a target is in reach.
+     */
     private boolean attemptCastSpell(Hero hero) {
         List<Item> spellItems = hero.getInventory().getByType(Spell.class);
         if (spellItems.isEmpty()) {
@@ -343,7 +433,11 @@ public class ValorGame {
         Spell spell;
         try {
             System.out.print("Choose spell index: ");
-            int idx = Integer.parseInt(scanner.nextLine().trim());
+            String input = scanner.nextLine().trim();
+            if (handleQuitInput(input)) {
+                return false;
+            }
+            int idx = Integer.parseInt(input);
             if (idx >= 0 && idx < spellItems.size()) {
                 spell = (Spell) spellItems.get(idx);
             } else {
@@ -360,7 +454,7 @@ public class ValorGame {
             return false;
         }
 
-        List<Monster> targets = getTargetsInRange(findHeroTile(hero));
+        List<Monster> targets = getMonstersInRange(findHeroTile(hero), 2);
         if (targets.isEmpty()) {
             System.out.println("No targets in range.");
             return false;
@@ -375,7 +469,11 @@ public class ValorGame {
             }
             try {
                 System.out.print("> ");
-                int idx = Integer.parseInt(scanner.nextLine().trim());
+                String input = scanner.nextLine().trim();
+                if (handleQuitInput(input)) {
+                    return false;
+                }
+                int idx = Integer.parseInt(input);
                 if (idx >= 0 && idx < targets.size()) {
                     target = targets.get(idx);
                 }
@@ -427,11 +525,18 @@ public class ValorGame {
         hero.levelUpIfReady();
     }
 
+    /**
+     * Teleports a hero from their own Nexus to a tile adjacent (side/behind) to an ally in another lane.
+     */
     private boolean attemptTeleport(Hero hero) {
         // Teleport to adjacent space of a hero in a DIFFERENT lane
+        ValorTile heroTile = findHeroTile(hero);
+        if (heroTile == null || !isHeroOnHeroNexus(heroTile)) {
+            System.out.println("Teleport is only available from your Nexus.");
+            return false;
+        }
         System.out.println("Choose target hero to teleport to:");
         List<Hero> validTargets = new ArrayList<Hero>();
-        ValorTile heroTile = findHeroTile(hero);
         Lane currentLane = Lane.getLaneForCol(heroTile.getCol());
 
         for (Hero h : heroes) {
@@ -458,7 +563,11 @@ public class ValorGame {
         int choice;
         try {
             System.out.print("Enter choice: ");
-            choice = Integer.parseInt(scanner.nextLine().trim());
+            String input = scanner.nextLine().trim();
+            if (handleQuitInput(input)) {
+                return false;
+            }
+            choice = Integer.parseInt(input);
         } catch (NumberFormatException e) {
             System.out.println("Invalid input.");
             return false;
@@ -481,6 +590,9 @@ public class ValorGame {
         for (int i = 0; i < validOffsets.length; i++) {
             int nr = r + validOffsets[i][0];
             int nc = c + validOffsets[i][1];
+            if (nr < r) {
+                continue; // cannot teleport into squares ahead of the target hero
+            }
             if (map.isValidCoordinate(nr, nc)) {
                 ValorTile dest = map.getTile(nr, nc);
                 if (dest.isAccessible() && !dest.hasHero() && !dest.hasMonster()) {
@@ -496,7 +608,14 @@ public class ValorGame {
         return false;
     }
 
+    /**
+     * Recalls a hero to their original spawn tile (Hero Nexus) once per turn, restoring 50% HP/Mana.
+     */
     private boolean attemptRecall(Hero hero) {
+        if (recallUsedThisRound.contains(hero)) {
+            System.out.println("Recall already used this turn.");
+            return false;
+        }
         int spawnCol = heroSpawnCols.get(hero);
         int spawnRow = 7;
 
@@ -511,11 +630,19 @@ public class ValorGame {
             current.setHero(null);
         }
         spawnTile.setHero(hero);
+        hero.heal(hero.getMaxHealth() / 2);
+        hero.gainMana(hero.getMaxMana() / 2);
         System.out.println(hero.getName() + " recalled to Nexus.");
+        recallUsedThisRound.add(hero);
         return true;
     }
 
     private void visitMarket(Hero hero) {
+        ValorTile tile = findHeroTile(hero);
+        if (!isHeroOnHeroNexus(tile)) {
+            System.out.println("You must stand on Hero Nexus to shop.");
+            return;
+        }
         System.out.println("--- MARKET ---");
         System.out.println("Welcome, " + hero.getName() + ". You have " + hero.getGold() + " gold.");
         boolean shopping = true;
@@ -525,8 +652,12 @@ public class ValorGame {
             System.out.println("3) Buy Armor/Weapon");
             System.out.println("4) Sell Item");
             System.out.println("5) Exit");
+            System.out.println("Q) Quit to menu");
             System.out.print("> ");
             String choice = scanner.nextLine().trim();
+            if (handleQuitInput(choice)) {
+                return;
+            }
             if ("1".equals(choice)) {
                 buyItem(hero, market.getPotions());
             } else if ("2".equals(choice)) {
@@ -540,13 +671,27 @@ public class ValorGame {
                     buyItem(hero, market.getArmors());
                 }
             } else if ("4".equals(choice)) {
-                if (hero.getInventory().getAll().isEmpty()) {
+                List<Item> inv = hero.getInventory().getAll();
+                if (inv.isEmpty()) {
                     System.out.println("Inventory empty.");
                 } else {
-                    // For brevity, selling first item, or you can implement a sell menu
-                    Item i = hero.getInventory().getAll().get(0);
-                    market.sell(hero, i);
-                    System.out.println("Sold " + i.getName());
+                    for (int i = 0; i < inv.size(); i++) {
+                        Item it = inv.get(i);
+                        System.out.println(i + ") " + it.getName() + " price:" + it.getPrice());
+                    }
+                    System.out.print("Index to sell: ");
+                    String idxStr = scanner.nextLine().trim();
+                    if (!idxStr.equalsIgnoreCase("q")) {
+                        try {
+                            int idx = Integer.parseInt(idxStr);
+                            if (idx >= 0 && idx < inv.size()) {
+                                market.sell(hero, inv.get(idx));
+                                System.out.println("Sold " + inv.get(idx).getName());
+                            }
+                        } catch (Exception e) {
+                            System.out.println("Invalid input.");
+                        }
+                    }
                 }
             } else if ("5".equals(choice)) {
                 shopping = false;
@@ -562,7 +707,11 @@ public class ValorGame {
         }
         try {
             System.out.print("Buy index: ");
-            int idx = Integer.parseInt(scanner.nextLine().trim());
+            String input = scanner.nextLine().trim();
+            if (handleQuitInput(input)) {
+                return;
+            }
+            int idx = Integer.parseInt(input);
             if (idx >= 0 && idx < items.size()) {
                 if (market.buy(hero, items.get(idx))) {
                     System.out.println("Bought!");
@@ -609,6 +758,9 @@ public class ValorGame {
         System.out.println("3) Cancel");
         System.out.print("> ");
         String type = scanner.nextLine().trim();
+        if (handleQuitInput(type)) {
+            return false;
+        }
 
         if ("1".equals(type)) {
             if (weapons.isEmpty()) {
@@ -620,7 +772,11 @@ public class ValorGame {
             }
             try {
                 System.out.print("Index: ");
-                int idx = Integer.parseInt(scanner.nextLine().trim());
+                String input = scanner.nextLine().trim();
+                if (handleQuitInput(input)) {
+                    return false;
+                }
+                int idx = Integer.parseInt(input);
                 if (idx >= 0 && idx < weapons.size()) {
                     hero.getEquipment().equipWeapon(weapons.get(idx));
                     System.out.println("Equipped " + weapons.get(idx).getName());
@@ -639,7 +795,11 @@ public class ValorGame {
             }
             try {
                 System.out.print("Index: ");
-                int idx = Integer.parseInt(scanner.nextLine().trim());
+                String input = scanner.nextLine().trim();
+                if (handleQuitInput(input)) {
+                    return false;
+                }
+                int idx = Integer.parseInt(input);
                 if (idx >= 0 && idx < armors.size()) {
                     hero.getEquipment().equipArmor(armors.get(idx));
                     System.out.println("Equipped " + armors.get(idx).getName());
@@ -655,6 +815,10 @@ public class ValorGame {
 
     // --- MONSTER TURN LOGIC ---
 
+    /**
+     * Resolves all monster turns: attack if a hero is in range 1, otherwise advance one step if lane is clear.
+     * Monsters respect hero blocks in their lane and cannot move past them.
+     */
     private void processMonsterTurn() {
         System.out.println("\n--- Monsters Turn ---");
         for (Monster m : new ArrayList<Monster>(monsters)) {
@@ -663,7 +827,7 @@ public class ValorGame {
                 continue;
             }
 
-            List<Hero> targets = getHeroesInRange(mTile);
+            List<Hero> targets = getHeroesInRange(mTile, 1);
             if (!targets.isEmpty()) {
                 // Attack Hero
                 Hero target = targets.get(0);
@@ -686,13 +850,15 @@ public class ValorGame {
                         t.setHero(null);
                     }
                 }
-            } else {
-                // Move Forward (South/Down)
+            } else if (!gameOver) {
+                // Move Forward (South/Down) if clear
                 int nextRow = mTile.getRow() + 1;
-                if (map.isValidCoordinate(nextRow, mTile.getCol())) {
+                Lane lane = Lane.getLaneForCol(mTile.getCol());
+                if (map.isValidCoordinate(nextRow, mTile.getCol())
+                        && lane != null
+                        && !isHeroBlockingLane(nextRow, lane)) {
                     ValorTile nextTile = map.getTile(nextRow, mTile.getCol());
-                    // Allow move if accessible AND no monster (Hero presence is OK)
-                    if (nextTile.isAccessible() && !nextTile.hasMonster()) {
+                    if (nextTile.isAccessible() && !nextTile.hasMonster() && !nextTile.hasHero()) {
                         mTile.setMonster(null);
                         nextTile.setMonster(m);
                         System.out.println(m.getName() + " moved forward.");
@@ -728,35 +894,118 @@ public class ValorGame {
         return null;
     }
 
-    private List<Monster> getTargetsInRange(ValorTile center) {
+    private boolean handleQuitInput(String input) {
+        if ("q".equalsIgnoreCase(input)) {
+            System.out.println("Exiting to main menu...");
+            gameOver = true;
+            quitRequested = true;
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isHeroOnHeroNexus(ValorTile tile) {
+        return tile != null && tile.getType() == TileType.NEXUS && tile.getRow() == map.getHeight() - 1;
+    }
+
+    private boolean isHeroOnMonsterNexus(ValorTile tile) {
+        return tile != null && tile.getType() == TileType.NEXUS && tile.getRow() == 0;
+    }
+
+    private boolean isMonsterOnHeroNexus(ValorTile tile) {
+        return tile != null
+                && tile.getType() == TileType.NEXUS
+                && tile.getRow() == map.getHeight() - 1;
+    }
+
+    private List<Monster> getMonstersInRange(ValorTile center, int range) {
         List<Monster> targets = new ArrayList<Monster>();
-        // Range: Current + Neighbors (3x3 grid)
-        for (int dr = -1; dr <= 1; dr++) {
-            for (int dc = -1; dc <= 1; dc++) {
-                int r = center.getRow() + dr;
-                int c = center.getCol() + dc;
-                if (map.isValidCoordinate(r, c)) {
-                    ValorTile t = map.getTile(r, c);
-                    if (t.hasMonster()) {
-                        targets.add(t.getMonster());
-                    }
+        if (center == null) {
+            return targets;
+        }
+        Lane attackerLane = Lane.getLaneForCol(center.getCol());
+        for (int r = 0; r < map.getHeight(); r++) {
+            for (int c = 0; c < map.getWidth(); c++) {
+                Lane targetLane = Lane.getLaneForCol(c);
+                if (attackerLane != targetLane) {
+                    continue; // must be same lane
+                }
+                ValorTile t = map.getTile(r, c);
+                if (t.hasMonster() && withinRange(center.getRow(), center.getCol(), r, c, range)) {
+                    targets.add(t.getMonster());
                 }
             }
         }
         return targets;
     }
 
-    private List<Hero> getHeroesInRange(ValorTile center) {
+    private boolean withinRange(int r1, int c1, int r2, int c2, int range) {
+        if (r1 == r2 && c1 == c2) {
+            return false;
+        }
+        return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2)) <= range;
+    }
+
+    private boolean isHeroBlockingLane(int row, Lane lane) {
+        List<Integer> cols = getLaneColumns(lane);
+        for (Integer c : cols) {
+            if (map.isValidCoordinate(row, c)) {
+                ValorTile t = map.getTile(row, c);
+                if (t.hasHero()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private List<Integer> getLaneColumns(Lane lane) {
+        List<Integer> cols = new ArrayList<Integer>();
+        if (lane == Lane.TOP) {
+            cols.add(0);
+            cols.add(1);
+        } else if (lane == Lane.MID) {
+            cols.add(3);
+            cols.add(4);
+        } else if (lane == Lane.BOT) {
+            cols.add(6);
+            cols.add(7);
+        }
+        return cols;
+    }
+
+    private ValorTile findSpawnTileInLane(int spawnCol) {
+        Lane lane = Lane.getLaneForCol(spawnCol);
+        if (lane == null) {
+            return null;
+        }
+        List<Integer> cols = getLaneColumns(lane);
+        for (int row = 0; row < map.getHeight(); row++) {
+            for (Integer col : cols) {
+                ValorTile tile = map.getTile(row, col);
+                if (tile.isAccessible() && !tile.hasMonster() && !tile.hasHero()) {
+                    return tile;
+                }
+            }
+        }
+        return null;
+    }
+
+    private List<Hero> getHeroesInRange(ValorTile center, int range) {
         List<Hero> targets = new ArrayList<Hero>();
-        for (int dr = -1; dr <= 1; dr++) {
-            for (int dc = -1; dc <= 1; dc++) {
-                int r = center.getRow() + dr;
-                int c = center.getCol() + dc;
-                if (map.isValidCoordinate(r, c)) {
-                    ValorTile t = map.getTile(r, c);
-                    if (t.hasHero()) {
-                        targets.add(t.getHero());
-                    }
+        if (center == null) {
+            return targets;
+        }
+        Lane attackerLane = Lane.getLaneForCol(center.getCol());
+        for (int r = 0; r < map.getHeight(); r++) {
+            for (int c = 0; c < map.getWidth(); c++) {
+                Lane targetLane = Lane.getLaneForCol(c);
+                if (attackerLane != targetLane) {
+                    continue; // must be same lane
+                }
+                ValorTile t = map.getTile(r, c);
+                if (t.hasHero() && withinRange(center.getRow(), center.getCol(), r, c, range)) {
+                    targets.add(t.getHero());
                 }
             }
         }
@@ -775,7 +1024,7 @@ public class ValorGame {
         // Heroes win if they reach Monster Nexus (Row 0)
         for (Hero h : heroes) {
             ValorTile t = findHeroTile(h);
-            if (t != null && t.getType() == TileType.NEXUS && t.getRow() == 0) {
+            if (isHeroOnMonsterNexus(t)) {
                 System.out.println("HEROES WIN! The Monster Nexus has been destroyed!");
                 gameOver = true;
                 return true;
@@ -784,7 +1033,7 @@ public class ValorGame {
         // Monsters win if they reach Hero Nexus (Row 7)
         for (Monster m : monsters) {
             ValorTile t = findMonsterTile(m);
-            if (t != null && t.getType() == TileType.NEXUS && t.getRow() == 7) {
+            if (isMonsterOnHeroNexus(t)) {
                 System.out.println("MONSTERS WIN! The Hero Nexus has been overrun!");
                 gameOver = true;
                 return true;
@@ -793,6 +1042,9 @@ public class ValorGame {
         return false;
     }
 
+    /**
+     * Resolves end-of-round updates: regen or respawn heroes, and periodically spawn monsters.
+     */
     private void endOfRound() {
         // Recover HP/Mana
         for (Hero h : heroes) {

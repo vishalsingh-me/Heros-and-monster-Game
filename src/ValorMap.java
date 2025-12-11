@@ -2,6 +2,13 @@ import java.util.Random;
 
 public class ValorMap {
     private static final int SIZE = 8;
+    private static final String RESET = "\u001B[0m";
+    private static final String GREEN = "\u001B[32m";
+    private static final String RED = "\u001B[31m";
+    private static final String YELLOW = "\u001B[33m";
+    private static final String BLUE = "\u001B[34m";
+    private static final String GRAY = "\u001B[90m";
+    private static final int CELL_WIDTH = 5;
     private final ValorTile[][] grid;
     private final Random random = new Random();
 
@@ -61,60 +68,71 @@ public class ValorMap {
     }
 
     /**
-     * Simple helper to repeat a character (Java 8 replacement for String.repeat).
-     */
-    private String repeatChar(char ch, int count) {
-        StringBuilder sb = new StringBuilder(count);
-        for (int i = 0; i < count; i++) {
-            sb.append(ch);
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Renders the map to the console.
+     * Renders the map to the console using fixed-size ASCII blocks per tile.
      */
     public void printMap() {
-        System.out.println("  " + repeatChar('-', SIZE * 5));
+        printColumnHeader();
         for (int r = 0; r < SIZE; r++) {
+            String[][] blocks = new String[SIZE][];
             for (int c = 0; c < SIZE; c++) {
-                ValorTile tile = grid[r][c];
-                String symbol = getTileSymbol(tile);
-                System.out.printf("| %-3s", symbol);
+                blocks[c] = grid[r][c].renderBlock();
             }
-            System.out.println("|");
-            System.out.println("  " + repeatChar('-', SIZE * 5));
+            int blockLines = blocks[0].length;
+            for (int line = 0; line < blockLines; line++) {
+                StringBuilder sb = new StringBuilder();
+                sb.append(String.format("%2d ", r));
+                for (int c = 0; c < SIZE; c++) {
+                    sb.append(blocks[c][line]);
+                }
+                System.out.println(sb.toString());
+            }
         }
+        printColumnHeader();
         printLegend();
     }
 
-    private String getTileSymbol(ValorTile tile) {
-        if (tile.hasHero() && tile.hasMonster()) return "H&M";
-        if (tile.hasHero()) return "H";
-        if (tile.hasMonster()) return "M";
-
-        // Classic Java 8 switch
-        switch (tile.getType()) {
-            case NEXUS:
-                return "N";
-            case INACCESSIBLE:
-                return "I";
-            case BUSH:
-                return "B";
-            case CAVE:
-                return "C";
-            case KOULOU:
-                return "K";
-            case OBSTACLE:
-                return "X"; // X for Obstacle
-            case PLAIN:
-                return " ";
-            default:
-                return "?";
+    private void printColumnHeader() {
+        int blockWidth = visibleLength(grid[0][0].renderBlock()[0]);
+        StringBuilder header = new StringBuilder("   ");
+        for (int c = 0; c < SIZE; c++) {
+            header.append(String.format("%" + blockWidth + "d", c));
         }
+        System.out.println(header.toString());
     }
 
     private void printLegend() {
-        System.out.println("Legend: N=Nexus | I=Inaccessible | X=Obstacle | B=Bush | C=Cave | K=Koulou | H=Hero | M=Monster");
+        System.out.println("Legend: "
+                + colorize("H", GREEN) + "=Hero "
+                + colorize("M", RED) + "=Monster "
+                + colorize("N", YELLOW) + "=Nexus "
+                + colorize("I", GRAY) + "=Inaccessible "
+                + colorize("X", GRAY) + "=Obstacle "
+                + colorize("B", BLUE) + "=Bush "
+                + colorize("C", BLUE) + "=Cave "
+                + colorize("K", BLUE) + "=Koulou");
+    }
+
+    private String colorize(String text, String color) {
+        return color + text + RESET;
+    }
+
+    private int visibleLength(String s) {
+        boolean inEsc = false;
+        int count = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (inEsc) {
+                if (ch == 'm') {
+                    inEsc = false;
+                }
+                continue;
+            }
+            if (ch == 27) {
+                inEsc = true;
+                continue;
+            }
+            count++;
+        }
+        return count;
     }
 }
