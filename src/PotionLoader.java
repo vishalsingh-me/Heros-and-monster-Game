@@ -3,6 +3,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -28,7 +29,9 @@ public class PotionLoader implements DataLoader<Potion> {
                 int price = Integer.parseInt(parts[1]);
                 int requiredLevel = Integer.parseInt(parts[2]);
                 int effectAmount = Integer.parseInt(parts[3]);
-                Set<String> stats = Stream.of(parts).skip(4).collect(Collectors.toUnmodifiableSet());
+                Set<String> stats = Stream.of(parts)
+                        .skip(4)
+                        .collect(Collectors.collectingAndThen(Collectors.toSet(), Collections::unmodifiableSet));
                 potions.add(new Potion(name, price, requiredLevel, effectAmount, stats));
             }
         }

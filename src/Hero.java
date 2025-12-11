@@ -126,13 +126,23 @@ public abstract class Hero extends Entity {
         }
         for (String stat : stats) {
             switch (stat.toLowerCase()) {
-                case "health" -> heal(amount);
-                case "mana" -> gainMana(amount);
-                case "strength" -> setStrength(getStrength() + amount);
-                case "dexterity" -> setDexterity(getDexterity() + amount);
-                case "agility" -> setAgility(getAgility() + amount);
-                default -> {
-                }
+                case "health":
+                    heal(amount);
+                    break;
+                case "mana":
+                    gainMana(amount);
+                    break;
+                case "strength":
+                    setStrength(getStrength() + amount);
+                    break;
+                case "dexterity":
+                    setDexterity(getDexterity() + amount);
+                    break;
+                case "agility":
+                    setAgility(getAgility() + amount);
+                    break;
+                default:
+                    break;
             }
         }
     }

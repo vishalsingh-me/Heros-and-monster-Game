@@ -1,3 +1,5 @@
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
 
 public class Potion extends Item {
@@ -13,7 +15,7 @@ public class Potion extends Item {
             throw new IllegalArgumentException("Potion must affect at least one stat");
         }
         this.effectAmount = effectAmount;
-        this.affectedStats = Set.copyOf(affectedStats);
+        this.affectedStats = Collections.unmodifiableSet(new HashSet<>(affectedStats));
     }
 
     public int getEffectAmount() {

@@ -109,10 +109,18 @@ public class GameMap {
     private String repeat(String fill, int count, int cells, String junction) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < cells; i++) {
-            sb.append(fill.repeat(count));
+            sb.append(repeatString(fill, count));
             if (i < cells - 1) {
                 sb.append(junction);
             }
+        }
+        return sb.toString();
+    }
+
+    private String repeatString(String fill, int count) {
+        StringBuilder sb = new StringBuilder(fill.length() * count);
+        for (int i = 0; i < count; i++) {
+            sb.append(fill);
         }
         return sb.toString();
     }

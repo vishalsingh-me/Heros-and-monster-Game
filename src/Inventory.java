@@ -26,7 +26,7 @@ public class Inventory {
     public List<Item> getByType(Class<? extends Item> type) {
         return items.stream()
                 .filter(i -> type.isAssignableFrom(i.getClass()))
-                .collect(Collectors.toUnmodifiableList());
+                .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
     }
 
     public boolean contains(Item item) {

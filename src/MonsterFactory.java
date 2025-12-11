@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 public class MonsterFactory {
     private final DragonLoader dragonLoader = new DragonLoader();
@@ -22,7 +23,7 @@ public class MonsterFactory {
     public List<Monster> spawnForLevel(List<Monster> pool, int level, int count) {
         List<Monster> candidates = pool.stream()
                 .filter(m -> m.getLevel() == level)
-                .toList();
+                .collect(Collectors.toList());
         if (candidates.isEmpty()) {
             int closestDiff = pool.stream()
                     .mapToInt(m -> Math.abs(m.getLevel() - level))
@@ -30,7 +31,7 @@ public class MonsterFactory {
                     .orElse(Integer.MAX_VALUE);
             candidates = pool.stream()
                     .filter(m -> Math.abs(m.getLevel() - level) == closestDiff)
-                    .toList();
+                    .collect(Collectors.toList());
         }
         List<Monster> spawned = new ArrayList<>();
         for (int i = 0; i < count; i++) {
@@ -44,15 +45,18 @@ public class MonsterFactory {
     }
 
     private Monster cloneMonster(Monster template) {
-        if (template instanceof Dragon d) {
+        if (template instanceof Dragon) {
+            Dragon d = (Dragon) template;
             return new Dragon(d.getName(), d.getLevel(), d.getMaxHealth(), d.getMinDamage(), d.getMaxDamage(),
                     d.getDefense(), d.getDodgeChance());
         }
-        if (template instanceof Exoskeleton e) {
+        if (template instanceof Exoskeleton) {
+            Exoskeleton e = (Exoskeleton) template;
             return new Exoskeleton(e.getName(), e.getLevel(), e.getMaxHealth(), e.getMinDamage(), e.getMaxDamage(),
                     e.getDefense(), e.getDodgeChance());
         }
-        if (template instanceof Spirit s) {
+        if (template instanceof Spirit) {
+            Spirit s = (Spirit) template;
             return new Spirit(s.getName(), s.getLevel(), s.getMaxHealth(), s.getMinDamage(), s.getMaxDamage(),
                     s.getDefense(), s.getDodgeChance());
         }

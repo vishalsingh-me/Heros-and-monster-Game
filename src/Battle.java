@@ -85,15 +85,19 @@ public class Battle {
         String type = spell.getDebuffType();
         double amount = spell.getDebuffAmount();
         switch (type) {
-            case FireSpell.DEBUFF_TYPE -> target.setDefense(Math.max(0, (int) (target.getDefense() - amount)));
-            case IceSpell.DEBUFF_TYPE -> {
+            case FireSpell.DEBUFF_TYPE:
+                target.setDefense(Math.max(0, (int) (target.getDefense() - amount)));
+                break;
+            case IceSpell.DEBUFF_TYPE:
                 int newMin = Math.max(0, (int) (target.getMinDamage() - amount));
                 int newMax = Math.max(newMin, (int) (target.getMaxDamage() - amount));
                 target.setDamageRange(newMin, newMax);
-            }
-            case LightningSpell.DEBUFF_TYPE -> target.setDodgeChance(Math.max(0, target.getDodgeChance() - amount));
-            default -> {
-            }
+                break;
+            case LightningSpell.DEBUFF_TYPE:
+                target.setDodgeChance(Math.max(0, target.getDodgeChance() - amount));
+                break;
+            default:
+                break;
         }
     }
 

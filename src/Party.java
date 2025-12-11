@@ -17,7 +17,9 @@ public class Party {
     }
 
     public List<Hero> aliveHeroes() {
-        return heroes.stream().filter(h -> !h.isFainted()).collect(Collectors.toUnmodifiableList());
+        return heroes.stream()
+                .filter(h -> !h.isFainted())
+                .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
     }
 
     public boolean isDefeated() {

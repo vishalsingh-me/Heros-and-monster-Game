@@ -1,10 +1,12 @@
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Scanner;
+import java.util.stream.Collectors;
 
 public class LegendsGame {
     public enum GameState { EXPLORING, MAP, MARKET, INVENTORY, BATTLE }
@@ -57,22 +59,22 @@ public class LegendsGame {
 
     private void loadData() throws IOException {
         heroTemplates = heroFactory.loadAll(
-                Path.of("Data/Paladins.txt"),
-                Path.of("Data/Sorcerers.txt"),
-                Path.of("Data/Warriors.txt")
+                Paths.get("Data/Paladins.txt"),
+                Paths.get("Data/Sorcerers.txt"),
+                Paths.get("Data/Warriors.txt")
         );
         monsterPool = monsterFactory.loadAll(
-                Path.of("Data/Dragons.txt"),
-                Path.of("Data/Exoskeletons.txt"),
-                Path.of("Data/Spirits.txt")
+                Paths.get("Data/Dragons.txt"),
+                Paths.get("Data/Exoskeletons.txt"),
+                Paths.get("Data/Spirits.txt")
         );
         MarketFactory.Stock stock = marketFactory.loadAll(
-                Path.of("Data/Weaponry.txt"),
-                Path.of("Data/Armory.txt"),
-                Path.of("Data/Potions.txt"),
-                Path.of("Data/FireSpells.txt"),
-                Path.of("Data/IceSpells.txt"),
-                Path.of("Data/LightningSpells.txt")
+                Paths.get("Data/Weaponry.txt"),
+                Paths.get("Data/Armory.txt"),
+                Paths.get("Data/Potions.txt"),
+                Paths.get("Data/FireSpells.txt"),
+                Paths.get("Data/IceSpells.txt"),
+                Paths.get("Data/LightningSpells.txt")
         );
         market = new Market(stock.getWeapons(), stock.getArmors(), stock.getPotions(), stock.getSpells());
     }
@@ -112,15 +114,18 @@ public class LegendsGame {
     }
 
     private Hero cloneHero(Hero template) {
-        if (template instanceof Warrior w) {
+        if (template instanceof Warrior) {
+            Warrior w = (Warrior) template;
             return new Warrior(w.getName(), w.getLevel(), w.getMaxHealth(), w.getMaxMana(),
                     w.getStrength(), w.getDexterity(), w.getAgility(), w.getGold(), w.getExperience());
         }
-        if (template instanceof Sorcerer s) {
+        if (template instanceof Sorcerer) {
+            Sorcerer s = (Sorcerer) template;
             return new Sorcerer(s.getName(), s.getLevel(), s.getMaxHealth(), s.getMaxMana(),
                     s.getStrength(), s.getDexterity(), s.getAgility(), s.getGold(), s.getExperience());
         }
-        if (template instanceof Paladin p) {
+        if (template instanceof Paladin) {
+            Paladin p = (Paladin) template;
             return new Paladin(p.getName(), p.getLevel(), p.getMaxHealth(), p.getMaxMana(),
                     p.getStrength(), p.getDexterity(), p.getAgility(), p.getGold(), p.getExperience());
         }
@@ -141,45 +146,55 @@ public class LegendsGame {
             System.out.print("> ");
             String input = scanner.nextLine().trim().toLowerCase();
             switch (state) {
-                case EXPLORING -> {
+                case EXPLORING:
                     switch (input) {
-                        case "w" -> attemptMove(-1, 0);
-                        case "s" -> attemptMove(1, 0);
-                        case "a" -> attemptMove(0, -1);
-                        case "d" -> attemptMove(0, 1);
-                        case "m" -> {
+                        case "w":
+                            attemptMove(-1, 0);
+                            break;
+                        case "s":
+                            attemptMove(1, 0);
+                            break;
+                        case "a":
+                            attemptMove(0, -1);
+                            break;
+                        case "d":
+                            attemptMove(0, 1);
+                            break;
+                        case "m":
                             state = GameState.MAP;
                             map.render();
-                        }
-                        case "i" -> {
+                            break;
+                        case "i":
                             state = GameState.INVENTORY;
                             showInventory();
                             System.out.println("Inventory opened. Press B to go back.");
-                        }
-                        case "q" -> {
+                            break;
+                        case "q":
                             System.out.print("Are you sure? (y/n): ");
                             String ans = scanner.nextLine().trim().toLowerCase();
                             if (ans.equals("y")) {
                                 running = false;
                             }
-                        }
-                        default -> System.out.println("Commands: W/A/S/D move, M map, I inventory, Q quit");
+                            break;
+                        default:
+                            System.out.println("Commands: W/A/S/D move, M map, I inventory, Q quit");
+                            break;
                     }
-                }
-                case MAP -> {
+                    break;
+                case MAP:
                     if (input.equals("b") || input.equals("q")) {
                         state = GameState.EXPLORING;
                     } else {
                         System.out.println("Map view. Press B to return to exploring.");
                     }
-                }
-                case MARKET -> {
+                    break;
+                case MARKET:
                     // market loop handles input; fallback here
                     if (input.equals("b")) {
                         state = GameState.EXPLORING;
                     }
-                }
-                case INVENTORY -> {
+                    break;
+                case INVENTORY:
                     if (input.equals("b")) {
                         state = GameState.EXPLORING;
                     } else if (input.equals("q")) {
@@ -188,10 +203,10 @@ public class LegendsGame {
                         showInventory();
                         System.out.println("Press B to return to exploring.");
                     }
-                }
-                case BATTLE -> {
+                    break;
+                case BATTLE:
                     // battle managed inside battleLoop
-                }
+                    break;
             }
         }
         System.out.println("Goodbye!");
@@ -205,7 +220,8 @@ public class LegendsGame {
         map.render();
         System.out.printf("Moved to (%d, %d).%n", map.getHeroRow(), map.getHeroCol());
         Tile tile = map.getCurrentTile();
-        if (tile instanceof MarketTile marketTile) {
+        if (tile instanceof MarketTile) {
+            MarketTile marketTile = (MarketTile) tile;
             System.out.println("Entered Market.");
             state = GameState.MARKET;
             enterMarket(marketTile.getMarket());
@@ -224,14 +240,23 @@ public class LegendsGame {
             System.out.print("Market> ");
             String cmd = scanner.nextLine().trim().toLowerCase();
             switch (cmd) {
-                case "list" -> listMarket(market);
-                case "buy" -> doBuy(market, scanner);
-                case "sell" -> doSell(market, scanner);
-                case "exit", "b" -> {
+                case "list":
+                    listMarket(market);
+                    break;
+                case "buy":
+                    doBuy(market, scanner);
+                    break;
+                case "sell":
+                    doSell(market, scanner);
+                    break;
+                case "exit":
+                case "b":
                     shopping = false;
                     state = GameState.EXPLORING;
-                }
-                default -> System.out.println("Commands: list, buy, sell, b");
+                    break;
+                default:
+                    System.out.println("Commands: list, buy, sell, b");
+                    break;
             }
         }
     }
@@ -271,11 +296,21 @@ public class LegendsGame {
         System.out.println("Buy which category? weapon/armor/potion/spell");
         String cat = scanner.nextLine().trim().toLowerCase();
         switch (cat) {
-            case "weapon" -> buyItem(market.getWeapons(), hero, market, scanner);
-            case "armor" -> buyItem(market.getArmors(), hero, market, scanner);
-            case "potion" -> buyItem(market.getPotions(), hero, market, scanner);
-            case "spell" -> buyItem(market.getSpells(), hero, market, scanner);
-            default -> System.out.println("Unknown category.");
+            case "weapon":
+                buyItem(market.getWeapons(), hero, market, scanner);
+                break;
+            case "armor":
+                buyItem(market.getArmors(), hero, market, scanner);
+                break;
+            case "potion":
+                buyItem(market.getPotions(), hero, market, scanner);
+                break;
+            case "spell":
+                buyItem(market.getSpells(), hero, market, scanner);
+                break;
+            default:
+                System.out.println("Unknown category.");
+                break;
         }
     }
 
@@ -416,21 +451,31 @@ public class LegendsGame {
             for (Hero hero : party.aliveHeroes()) {
                 int choice = promptBattleChoice(scanner, hero);
                 switch (choice) {
-                    case 1 -> {
+                    case 1: {
                         Optional<Monster> target = battleTarget(battle, scanner);
                         target.ifPresent(t -> battle.heroAttack(hero, t));
+                        break;
                     }
-                    case 2 -> {
+                    case 2: {
                         Spell spell = chooseSpell(hero, scanner);
                         Optional<Monster> target = battleTarget(battle, scanner);
                         if (spell != null && target.isPresent()) {
                             battle.castSpell(hero, spell, target.get());
                         }
+                        break;
                     }
-                    case 3 -> usePotion(hero, scanner);
-                    case 4 -> equip(hero, scanner);
-                    case 5 -> System.out.println("Turn skipped.");
-                    default -> System.out.println("Turn skipped.");
+                    case 3:
+                        usePotion(hero, scanner);
+                        break;
+                    case 4:
+                        equip(hero, scanner);
+                        break;
+                    case 5:
+                        System.out.println("Turn skipped.");
+                        break;
+                    default:
+                        System.out.println("Turn skipped.");
+                        break;
                 }
             }
             for (Monster m : new ArrayList<>(battle.getMonsters())) {
@@ -465,7 +510,8 @@ public class LegendsGame {
     }
 
     private Optional<Monster> battleTarget(Battle battle, Scanner scanner) {
-        List<Monster> alive = battle.getMonsters().stream().filter(m -> !m.isFainted()).toList();
+        List<Monster> alive = battle.getMonsters().stream().filter(m -> !m.isFainted())
+                .collect(Collectors.toList());
         if (alive.isEmpty()) {
             return Optional.empty();
         }
@@ -489,7 +535,8 @@ public class LegendsGame {
     }
 
     private Spell chooseSpell(Hero hero, Scanner scanner) {
-        List<Spell> spells = hero.getInventory().getByType(Spell.class).stream().map(s -> (Spell) s).toList();
+        List<Spell> spells = hero.getInventory().getByType(Spell.class).stream().map(s -> (Spell) s)
+                .collect(Collectors.toList());
         if (spells.isEmpty()) {
             System.out.println("No spells.");
             return null;
@@ -515,7 +562,8 @@ public class LegendsGame {
     }
 
     private void usePotion(Hero hero, Scanner scanner) {
-        List<Potion> potions = hero.getInventory().getByType(Potion.class).stream().map(p -> (Potion) p).toList();
+        List<Potion> potions = hero.getInventory().getByType(Potion.class).stream().map(p -> (Potion) p)
+                .collect(Collectors.toList());
         if (potions.isEmpty()) {
             System.out.println("No potions.");
             return;
@@ -544,8 +592,10 @@ public class LegendsGame {
     }
 
     private void equip(Hero hero, Scanner scanner) {
-        List<Weapon> weapons = hero.getInventory().getByType(Weapon.class).stream().map(w -> (Weapon) w).toList();
-        List<Armor> armors = hero.getInventory().getByType(Armor.class).stream().map(a -> (Armor) a).toList();
+        List<Weapon> weapons = hero.getInventory().getByType(Weapon.class).stream().map(w -> (Weapon) w)
+                .collect(Collectors.toList());
+        List<Armor> armors = hero.getInventory().getByType(Armor.class).stream().map(a -> (Armor) a)
+                .collect(Collectors.toList());
         System.out.println("Equip menu:");
         if (!weapons.isEmpty()) {
             System.out.println("Weapons:");
