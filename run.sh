@@ -28,7 +28,8 @@ compile() {
 }
 
 run_game() {
-  JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8" java -cp "${OUT_DIR}" LegendsGame
+  # Launch through Main so the game hub menu appears
+  JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8" java -cp "${OUT_DIR}" Main
 }
 
 CMD="${1:-all}"
