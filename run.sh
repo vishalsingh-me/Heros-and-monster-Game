@@ -23,11 +23,12 @@ compile() {
     echo "No Java sources found under ${SRC_DIR}" >&2
     exit 1
   fi
-  javac -d "${OUT_DIR}" "${files[@]}"
+  # Force UTF-8 so special map characters compile on Windows consoles
+  JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8" javac -encoding UTF-8 -d "${OUT_DIR}" "${files[@]}"
 }
 
 run_game() {
-  java -cp "${OUT_DIR}" LegendsGame
+  JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8" java -cp "${OUT_DIR}" LegendsGame
 }
 
 CMD="${1:-all}"
