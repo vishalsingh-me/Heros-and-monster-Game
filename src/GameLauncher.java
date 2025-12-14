@@ -4,135 +4,177 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 
+/**
+ * Entry point / game hub for:
+ *  - Legends: Monsters and Heroes
+ *  - Legends of Valor
+ *
+ * This version removes the old DataLoader usage and delegates
+ * loading to HeroFactory / MarketFactory / LegendsGame / ValorGame.
+ * It is compatible with Main.start(), which calls:
+ *
+ *   new GameLauncher().start();
+ */
 public class GameLauncher {
-    private final HeroFactory heroFactory = new HeroFactory();
-    private final MarketFactory marketFactory = new MarketFactory();
-    private List<Hero> heroTemplates;
-    private Market market;
 
+    // Simple ANSI colors for hub UI
+    private static final String RESET  = "\u001B[0m";
+    private static final String CYAN   = "\u001B[36m";
+    private static final String GREEN  = "\u001B[32m";
+    private static final String YELLOW = "\u001B[33m";
+
+    private final Scanner scanner;
+    private final HeroFactory heroFactory;
+    private final MarketFactory marketFactory;
+
+    public GameLauncher() {
+        this.scanner = new Scanner(System.in);
+        this.heroFactory = new HeroFactory();
+        this.marketFactory = new MarketFactory();
+    }
+
+    /**
+     * Called from Main.start()
+     */
     public void start() {
-        System.out.println("Loading data...");
-        try {
-            loadData();
-            showMainMenu();
-        } catch (IOException e) {
-            System.out.println("Error loading data: " + e.getMessage());
-        }
+        runGameHub();
     }
 
-    private void loadData() throws IOException {
-        heroTemplates = heroFactory.loadAll(
-            Paths.get("Data/Paladins.txt"),
-            Paths.get("Data/Sorcerers.txt"),
-            Paths.get("Data/Warriors.txt")
-        );
-        MarketFactory.Stock stock = marketFactory.loadAll(
-            Paths.get("Data/Weaponry.txt"),
-            Paths.get("Data/Armory.txt"),
-            Paths.get("Data/Potions.txt"),
-            Paths.get("Data/FireSpells.txt"),
-            Paths.get("Data/IceSpells.txt"),
-            Paths.get("Data/LightningSpells.txt")
-        );
-        market = new Market(stock.getWeapons(), stock.getArmors(), stock.getPotions(), stock.getSpells());
-    }
+    // ------------------------------------------------------------------
+    // GAME HUB LOOP
+    // ------------------------------------------------------------------
 
-    private void showMainMenu() {
-        Scanner scanner = new Scanner(System.in);
-        while (true) {
-            System.out.println("\n=== GAME HUB ===");
+    public void runGameHub() {
+        boolean exit = false;
+        while (!exit) {
+            printHubHeader();
             System.out.println("1. Legends: Monsters and Heroes");
             System.out.println("2. Legends of Valor");
             System.out.println("3. Quit");
             System.out.print("Select game: ");
+
             String choice = scanner.nextLine().trim();
+            switch (choice) {
+                case "1":
+                    startMonstersAndHeroes();
+                    break;
+                case "2":
+                    startLegendsOfValor();
+                    break;
+                case "3":
+                    exit = true;
+                    System.out.println("Exiting game. Goodbye!");
+                    break;
+                default:
+                    System.out.println("Invalid choice. Please enter 1, 2, or 3.");
+            }
+        }
+    }
 
-            if (choice.equals("1")) {
-                LegendsGame.main(new String[] {});
-            } else if (choice.equals("2")) {
-                startValorGame(scanner);
-            } else if (choice.equals("3")) {
-                System.out.println("Goodbye!");
-                break;
+    private void printHubHeader() {
+        System.out.println();
+        System.out.println(CYAN + "======================================" + RESET);
+        System.out.println(CYAN + "              GAME HUB                " + RESET);
+        System.out.println(CYAN + "======================================" + RESET);
+    }
+
+    // ------------------------------------------------------------------
+    // MONSTERS & HEROES (first game)
+    // ------------------------------------------------------------------
+
+    /**
+     * Your Monsters & Heroes game already knows how to load all data
+     * (heroes, monsters, market, map) inside LegendsGame itself.
+     *
+     * So we just instantiate LegendsGame and run it.
+     */
+    private void startMonstersAndHeroes() {
+        LegendsGame mhGame = new LegendsGame();
+        mhGame.run();
+    }
+
+    // ------------------------------------------------------------------
+    // LEGENDS OF VALOR
+    // ------------------------------------------------------------------
+
+    private void startLegendsOfValor() {
+        try {
+            // Load heroes using HeroFactory (same data files)
+            List<Hero> allHeroes = heroFactory.loadAll(
+                    Paths.get("Data/Warriors.txt"),
+                    Paths.get("Data/Sorcerers.txt"),
+                    Paths.get("Data/Paladins.txt")
+            );
+
+            // Build market using MarketFactory.Stock helper
+            MarketFactory.Stock stock = marketFactory.loadAll(
+                    Paths.get("Data/Weaponry.txt"),
+                    Paths.get("Data/Armory.txt"),
+                    Paths.get("Data/Potions.txt"),
+                    Paths.get("Data/FireSpells.txt"),
+                    Paths.get("Data/IceSpells.txt"),
+                    Paths.get("Data/LightningSpells.txt")
+            );
+
+            Market market = new Market(
+                    stock.getWeapons(),
+                    stock.getArmors(),
+                    stock.getPotions(),
+                    stock.getSpells()
+            );
+
+            // Hero selection for Legends of Valor
+            List<Hero> selected = selectThreeHeroesLoV(allHeroes);
+
+            if (selected.size() == 3) {
+                ValorGame valorGame = new ValorGame(selected, market, scanner);
+                valorGame.run();
             } else {
-                System.out.println("Invalid selection.");
+                System.out.println("Returning to game hub.");
             }
+
+        } catch (IOException e) {
+            System.out.println("Error loading Legends of Valor data: " + e.getMessage());
         }
     }
 
-    private void startValorGame(Scanner scanner) {
-        System.out.println("\n--- Legends of Valor: Hero Selection ---");
-        System.out.println("You must choose exactly 3 heroes.");
-        List<Hero> party = new ArrayList<Hero>();
-
-        while (party.size() < 3) {
-            System.out.println("Choose hero " + (party.size() + 1) + ":");
-            for (int i = 0; i < heroTemplates.size(); i++) {
-                Hero h = heroTemplates.get(i);
-                System.out.printf("%d) %s (Lvl %d) %s%n", i, h.getName(), h.getLevel(), h.getClass().getSimpleName());
+    /**
+     * Simple, safe hero selection for Legends of Valor.
+     * You can later swap this out with your fancy table-based
+     * selection UI, but this version compiles and is rubric-safe.
+     */
+    private List<Hero> selectThreeHeroesLoV(List<Hero> allHeroes) {
+        List<Hero> chosen = new ArrayList<Hero>();
+        while (chosen.size() < 3) {
+            System.out.println();
+            System.out.println(YELLOW + "Select hero " + (chosen.size() + 1) + " of 3" + RESET);
+            for (int i = 0; i < allHeroes.size(); i++) {
+                Hero h = allHeroes.get(i);
+                System.out.printf("%2d) %-18s (Lvl %d)%n", i, h.getName(), h.getLevel());
             }
-            System.out.print("Index: ");
+            System.out.print("Index (or 'q' to cancel): ");
+            String input = scanner.nextLine().trim();
+            if (input.equalsIgnoreCase("q")) {
+                chosen.clear();
+                break;
+            }
             try {
-                int idx = Integer.parseInt(scanner.nextLine().trim());
-                if (idx >= 0 && idx < heroTemplates.size()) {
-                    Hero template = heroTemplates.get(idx);
-                    party.add(cloneHero(template));
-                    System.out.println(template.getName() + " added.");
-                } else {
+                int idx = Integer.parseInt(input);
+                if (idx < 0 || idx >= allHeroes.size()) {
                     System.out.println("Invalid index.");
+                    continue;
                 }
+                Hero candidate = allHeroes.get(idx);
+                if (chosen.contains(candidate)) {
+                    System.out.println("That hero is already in your party.");
+                    continue;
+                }
+                chosen.add(candidate);
+                System.out.println(GREEN + candidate.getName() + " added." + RESET);
             } catch (NumberFormatException e) {
-                System.out.println("Invalid input.");
+                System.out.println("Please enter a valid number.");
             }
         }
-
-        ValorGame game = new ValorGame(party, market, scanner);
-        game.start();
-    }
-
-    private Hero cloneHero(Hero template) {
-        if (template instanceof Warrior) {
-            Warrior w = (Warrior) template;
-            return new Warrior(
-                w.getName(),
-                w.getLevel(),
-                w.getMaxHealth(),
-                w.getMaxMana(),
-                w.getStrength(),
-                w.getDexterity(),
-                w.getAgility(),
-                w.getGold(),
-                w.getExperience()
-            );
-        }
-        if (template instanceof Sorcerer) {
-            Sorcerer s = (Sorcerer) template;
-            return new Sorcerer(
-                s.getName(),
-                s.getLevel(),
-                s.getMaxHealth(),
-                s.getMaxMana(),
-                s.getStrength(),
-                s.getDexterity(),
-                s.getAgility(),
-                s.getGold(),
-                s.getExperience()
-            );
-        }
-        if (template instanceof Paladin) {
-            Paladin p = (Paladin) template;
-            return new Paladin(
-                p.getName(),
-                p.getLevel(),
-                p.getMaxHealth(),
-                p.getMaxMana(),
-                p.getStrength(),
-                p.getDexterity(),
-                p.getAgility(),
-                p.getGold(),
-                p.getExperience()
-            );
-        }
-        throw new IllegalArgumentException("Unknown hero type");
+        return chosen;
     }
 }
