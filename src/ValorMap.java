@@ -118,7 +118,7 @@ public class ValorMap {
                 + colorize("H", GREEN) + "=Hero "
                 + colorize("M", RED) + "=Monster "
                 + colorize("N", YELLOW) + "=Nexus "
-                + colorize("I", GRAY) + "=Inaccessible "
+                + colorize("▓", GRAY) + "=Inaccessible "
                 + colorize("X", GRAY) + "=Obstacle "
                 + colorize("B", BLUE) + "=Bush "
                 + colorize("C", BLUE) + "=Cave "

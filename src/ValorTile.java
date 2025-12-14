@@ -62,8 +62,10 @@ public class ValorTile extends Tile {
         String[] block = new String[BLOCK_HEIGHT];
 
         if (type == TileType.INACCESSIBLE) {
-            String border = "+" + GRAY + repeat("X", BLOCK_WIDTH - 2) + RESET + "+";
-            String middle = "|" + GRAY + repeat("X", BLOCK_WIDTH - 2) + RESET + "|";
+            // Solid gray wall to visually separate lanes (distinct from obstacles)
+            String fill = GRAY + repeat("▓", BLOCK_WIDTH - 2) + RESET;
+            String border = "+" + fill + "+";
+            String middle = "|" + fill + "|";
             block[0] = border;
             block[1] = middle;
             block[2] = middle;
