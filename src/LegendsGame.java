@@ -7,8 +7,17 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Scanner;
 import java.util.stream.Collectors;
+public class LegendsGame extends RpgGame {
 
-public class LegendsGame {
+        public LegendsGame() {
+        this(new Scanner(System.in));
+    }
+
+    public LegendsGame(Scanner scanner) {
+        super(scanner);
+    }
+
+
     public enum GameState { EXPLORING, MAP, MARKET, INVENTORY, BATTLE }
 
     private final HeroFactory heroFactory = new HeroFactory();

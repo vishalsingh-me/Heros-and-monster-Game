@@ -2,13 +2,17 @@ import java.util.Random;
 
 public class ValorMap {
     private static final int SIZE = 8;
-    private static final String RESET = "\u001B[0m";
-    private static final String GREEN = "\u001B[32m";
-    private static final String RED = "\u001B[31m";
+
+    private static final String RESET  = "\u001B[0m";
+    private static final String GREEN  = "\u001B[32m";
+    private static final String RED    = "\u001B[31m";
     private static final String YELLOW = "\u001B[33m";
-    private static final String BLUE = "\u001B[34m";
-    private static final String GRAY = "\u001B[90m";
+    private static final String BLUE   = "\u001B[34m";
+    private static final String GRAY   = "\u001B[90m";
+
+    // width is only used for formatting / spacing
     private static final int CELL_WIDTH = 5;
+
     private final ValorTile[][] grid;
     private final Random random = new Random();
 
@@ -20,7 +24,7 @@ public class ValorMap {
     private void initializeGrid() {
         for (int r = 0; r < SIZE; r++) {
             for (int c = 0; c < SIZE; c++) {
-                // 1. Determine fixed types (Walls and Nexus)
+                // 1. Fixed structures: lane walls and nexus rows
                 if (c == 2 || c == 5) {
                     // Columns 2 and 5 are always walls (separators)
                     grid[r][c] = new ValorTile(r, c, TileType.INACCESSIBLE);
@@ -31,7 +35,7 @@ public class ValorMap {
                     // Row 7 is the Heroes' Nexus
                     grid[r][c] = new ValorTile(r, c, TileType.NEXUS);
                 } else {
-                    // 2. Randomize playable terrain (Rows 1-6)
+                    // 2. Random terrain on rows 1–6
                     grid[r][c] = new ValorTile(r, c, getRandomTerrain());
                 }
             }
@@ -40,12 +44,12 @@ public class ValorMap {
 
     private TileType getRandomTerrain() {
         int roll = random.nextInt(100);
-        // Adjusted distribution to include Obstacles
-        if (roll < 20) return TileType.BUSH;       // 20%
-        if (roll < 40) return TileType.CAVE;       // 20%
-        if (roll < 60) return TileType.KOULOU;     // 20%
-        if (roll < 70) return TileType.OBSTACLE;   // 10%
-        return TileType.PLAIN;                     // 30%
+        // 20% Bush, 20% Cave, 20% Koulou, 10% Obstacle, 30% Plain
+        if (roll < 20) return TileType.BUSH;
+        if (roll < 40) return TileType.CAVE;
+        if (roll < 60) return TileType.KOULOU;
+        if (roll < 70) return TileType.OBSTACLE;
+        return TileType.PLAIN;
     }
 
     public ValorTile getTile(int row, int col) {
@@ -53,6 +57,15 @@ public class ValorMap {
             return null;
         }
         return grid[row][col];
+    }
+
+    /** 
+     * Small helper used by ValorGame: returns true if the given
+     * coordinates refer to a Nexus tile (hero or monster nexus).
+     */
+    public boolean isNexus(int row, int col) {
+        ValorTile t = getTile(row, col);
+        return t != null && t.getType() == TileType.NEXUS;
     }
 
     public boolean isValidCoordinate(int row, int col) {
@@ -116,6 +129,10 @@ public class ValorMap {
         return color + text + RESET;
     }
 
+    /**
+     * Compute the visible width of a string that may contain ANSI
+     * escape sequences, so that the column headers line up correctly.
+     */
     private int visibleLength(String s) {
         boolean inEsc = false;
         int count = 0;
@@ -127,7 +144,7 @@ public class ValorMap {
                 }
                 continue;
             }
-            if (ch == 27) {
+            if (ch == 27) { // ESC
                 inEsc = true;
                 continue;
             }

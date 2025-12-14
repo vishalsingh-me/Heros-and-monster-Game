@@ -1,9 +1,6 @@
 public class Main {
     public static void main(String[] args) {
-        start();
-    }
-
-    public static void start() {
-        new GameLauncher().start();
+        GameLauncher launcher = new GameLauncher();
+        launcher.start();
     }
 }

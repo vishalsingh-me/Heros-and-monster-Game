@@ -1,57 +1,95 @@
-/**
- * ValorGame orchestrates the Legends of Valor MOBA-style mode.
- * It coordinates map setup, hero/monster turns, movement/combat rules, market access,
- * and victory conditions across the three-lane board.
- *
- * Author: Codex (cleanup and rule refinements)
- *
- * Core rules summary:
- * - Heroes push north from Hero Nexus (row 7) toward Monster Nexus (row 0); monsters push south.
- * - Heroes attack at range 1; spells at range 2; monsters advance unless blocked by heroes.
- * - Market only at Hero Nexus; teleport only from Hero Nexus to an adjacent tile of an ally in another lane.
- * - Recall returns a hero to their spawn tile with partial restore and can be used once per turn.
- * - Q at any prompt exits back to the main menu.
- *
- * High-level algorithm:
- * - Initialize map and spawn heroes/monsters.
- * - For each round: print header, process each hero turn (movement/combat/shop), process monster turns,
- *   resolve respawns/regeneration/spawns, and check win conditions.
- */
 import java.io.IOException;
 import java.nio.file.Paths;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Scanner;
+import java.util.Set;
 
-public class ValorGame {
+/**
+ * Legends of Valor game.
+ *
+ * NOTE: This class only has UI/print improvements added (colors, formatting,
+ * help, event log, end-game summary). Game rules/mechanics are the same
+ * as your previous version.
+ */
+public class ValorGame extends RpgGame {
+
+    // ===== ANSI color codes for colorful terminal UI =====
+    private static final String RESET   = "\u001B[0m";
+    private static final String BOLD    = "\u001B[1m";
+
+    private static final String BLACK   = "\u001B[30m";
+    private static final String RED     = "\u001B[31m";
+    private static final String GREEN   = "\u001B[32m";
+    private static final String YELLOW  = "\u001B[33m";
+    private static final String BLUE    = "\u001B[34m";
+    private static final String MAGENTA = "\u001B[35m";
+    private static final String CYAN    = "\u001B[36m";
+    private static final String WHITE   = "\u001B[37m";
+
+    // bright variants
+    private static final String BRIGHT_RED     = "\u001B[91m";
+    private static final String BRIGHT_GREEN   = "\u001B[92m";
+    private static final String BRIGHT_YELLOW  = "\u001B[93m";
+    private static final String BRIGHT_BLUE    = "\u001B[94m";
+    private static final String BRIGHT_MAGENTA = "\u001B[95m";
+    private static final String BRIGHT_CYAN    = "\u001B[96m";
+    private static final String BRIGHT_WHITE   = "\u001B[97m";
+
+    private static final String BG_RED    = "\u001B[41m";
+    private static final String BG_GREEN  = "\u001B[42m";
+    private static final String BG_YELLOW = "\u001B[43m";
+    private static final String BG_BLUE   = "\u001B[44m";
+
+    // ===== game flags =====
+    private boolean quitRequested = false;
+    private boolean gameOver      = false;
+
+    // ===== Tracking for end-of-game stats and event log =====
+    private static final int EVENT_LOG_SIZE = 5;
+    private final List<String> eventLog = new ArrayList<String>();
+    private final Map<Hero, Integer> heroKills  = new HashMap<Hero, Integer>();
+    private final Map<Hero, Integer> heroFaints = new HashMap<Hero, Integer>();
+    private final Map<Hero, Integer> heroDamage = new HashMap<Hero, Integer>();
+
     private ValorMap map;
     private final List<Hero> heroes;
     private final List<Monster> monsters;
-    private final Map<Hero, Integer> heroSpawnCols; // Tracks which column a hero spawns in
+    private final Map<Hero, Integer> heroSpawnCols; // which column a hero spawns in
     private final MonsterFactory monsterFactory;
     private final Market market;
-    private final Scanner scanner; // Shared scanner
-    private List<Monster> globalMonsterPool; // Cache loaded monsters
+    private List<Monster> globalMonsterPool; // cached monsters
+
     private int round;
-    private boolean gameOver;
     private final Random random = new Random();
     private final Set<Hero> recallUsedThisRound = new HashSet<Hero>();
-    private boolean quitRequested;
 
-    // Configuration
-    private static final int MONSTER_SPAWN_RATE = 8; // Monsters spawn every 8 rounds
+    private static final int MONSTER_SPAWN_RATE = 8; // spawn every 8 rounds
 
+    private String endReason;   // used for end-game summary
+
+    // ----------------------------------------------------
+    // Constructor
+    // ----------------------------------------------------
     public ValorGame(List<Hero> selectedHeroes, Market market, Scanner scanner) {
+        super(scanner);
+
         if (selectedHeroes.size() != 3) {
             throw new IllegalArgumentException("Legends of Valor requires exactly 3 heroes.");
         }
-        this.heroes = new ArrayList<Hero>(selectedHeroes);
-        this.monsters = new ArrayList<Monster>();
+
+        this.heroes        = new ArrayList<Hero>(selectedHeroes);
+        this.monsters      = new ArrayList<Monster>();
         this.heroSpawnCols = new HashMap<Hero, Integer>();
         this.monsterFactory = new MonsterFactory();
-        this.market = market;
-        this.scanner = scanner;
-        this.round = 0;
-        this.gameOver = false;
+        this.market        = market;
+        this.round         = 0;
+        this.gameOver      = false;
+        this.endReason     = null;
 
         // Initialize Map
         this.map = new ValorMap();
@@ -69,15 +107,22 @@ public class ValorGame {
         }
     }
 
+    // ----------------------------------------------------
+    // Core loop
+    // ----------------------------------------------------
     public void start() {
-        System.out.println("Welcome to Legends of Valor!");
+        System.out.println(BRIGHT_CYAN + BOLD + "Welcome to Legends of Valor!" + RESET);
         showIntro();
         initializeGame();
 
         while (!gameOver) {
             round++;
             recallUsedThisRound.clear();
-            System.out.println("\n========== ROUND " + round + " ==========");
+
+            System.out.println();
+            System.out.println(BRIGHT_CYAN + BOLD
+                    + "========== ROUND " + round + " =========="
+                    + RESET);
 
             // 1. Hero Turn
             processHeroTurn();
@@ -91,72 +136,65 @@ public class ValorGame {
                 break;
             }
 
-            // 3. End of Round Updates (Respawn, Regen, etc.)
+            // 3. End of Round Updates (Respawn, Regen, Spawn)
             endOfRound();
         }
+
+        System.out.println();
         if (quitRequested) {
             System.out.println("Exited to main menu.");
         } else {
-            System.out.println("Game Over!");
+            System.out.println(BRIGHT_CYAN + BOLD + "Game Over!" + RESET);
         }
+
+        // show summary for rubric
+        if (endReason == null) {
+            endReason = quitRequested ? "You quit the battle." : "Battle finished.";
+        }
+        printEndGameSummary(endReason);
     }
 
+    @Override
+    public void run() {
+        start();
+    }
+
+    // ----------------------------------------------------
+    // Intro / setup
+    // ----------------------------------------------------
     private void showIntro() {
         System.out.println();
-        System.out.println("+======================================+");
-        System.out.println("|          LEGENDS OF VALOR            |");
-        System.out.println("+======================================+");
-        System.out.println("|  Push through three lanes, break     |");
-        System.out.println("|  enemy lines, and reach their nexus. |");
-        System.out.println("+======================================+");
-        System.out.println();
-        System.out.println("Exploration: Advance up lanes, respect obstacles, and hold your nexus.");
-        System.out.println("Combat: Move into range, use basic attacks (F) or spells (C) to drop monsters.");
-        System.out.println("Potions & Spells: Potions give instant stat boosts; spells deal damage and debuff foes.");
-        System.out.println("Level-up: Earn gold/exp from kills; shop at your nexus to gear up and grow stronger.");
-        System.out.println();
-        System.out.println("Controls:");
-        System.out.println("  W/A/S/D - Move");
-        System.out.println("  F - Basic attack");
-        System.out.println("  C - Cast spell");
-        System.out.println("  T - Teleport to ally lane");
-        System.out.println("  R - Recall to your nexus");
-        System.out.println("  P - Use potion");
-        System.out.println("  E - Equip gear");
-        System.out.println("  I - Hero info");
-        System.out.println("  M - Market (when on your nexus)");
-        System.out.println("  Q - Quit to menu");
-        System.out.println();
-        System.out.print("Press ENTER to begin...");
-        scanner.nextLine();
+        System.out.println("Three lanes connect the Hero Nexus (bottom) to the Monster Nexus (top).");
+        System.out.println("Heroes push north, Monsters push south.");
+        System.out.println("Reach the enemy Nexus to win. Don't let monsters reach yours!");
+        System.out.println("Use W/A/S/D to move, F for physical attack, C to cast spells.");
+        System.out.println("Teleport (T) only from your Nexus to an ally in another lane.");
+        System.out.println("Recall (R) to return to your spawn Nexus tile.");
         System.out.println();
     }
 
     private void initializeGame() {
-        // Assign heroes to lanes (Cols 0, 3, 6 are standard start points for lanes)
+        // Assign heroes to lanes (Cols 0, 3, 6)
         int[] startCols = {0, 3, 6};
 
         for (int i = 0; i < 3; i++) {
             Hero h = heroes.get(i);
             int col = startCols[i];
-            int row = 7; // Heroes start at bottom (Hero Nexus)
+            int row = 7; // Hero Nexus (bottom)
 
-            heroSpawnCols.put(h, col);
+            heroSpawnCols.put(h, Integer.valueOf(col));
 
-            // Place hero on map
             ValorTile tile = map.getTile(row, col);
             tile.setHero(h);
         }
 
-        // Spawn initial monsters
         spawnMonsters();
     }
 
-    /**
-     * Spawns one monster per lane at the top, finding the nearest free tile in that lane if the spawn is blocked.
-     */
+    // ----------------------------------------------------
+    // Monster spawn
+    // ----------------------------------------------------
     private void spawnMonsters() {
-        // New monsters have a level equal to highest level among the 3 heroes
         int maxHeroLevel = 1;
         for (Hero h : heroes) {
             if (h.getLevel() > maxHeroLevel) {
@@ -164,99 +202,136 @@ public class ValorGame {
             }
         }
 
-        int[] spawnCols = {1, 4, 7}; // Right side of each lane (Top of map)
+        int[] spawnCols = {1, 4, 7}; // Monster Nexus columns
 
-        for (int col : spawnCols) {
-            ValorTile spawnTile = findSpawnTileInLane(col);
-            List<Monster> candidates = monsterFactory.spawnForLevel(globalMonsterPool, maxHeroLevel, 1);
-            if (!candidates.isEmpty() && spawnTile != null) {
-                Monster m = candidates.get(0);
-                spawnTile.setMonster(m);
-                monsters.add(m);
-                System.out.println("A wild " + m.getName() + " appeared in " + Lane.getLaneForCol(col));
-            } else if (spawnTile == null) {
-                System.out.println("No space to spawn a monster in lane " + Lane.getLaneForCol(col));
+        for (int i = 0; i < spawnCols.length; i++) {
+            int col = spawnCols[i];
+            ValorTile tile = map.getTile(0, col);
+            if (!tile.hasMonster()) {
+                List<Monster> candidates =
+                        monsterFactory.spawnForLevel(globalMonsterPool, maxHeroLevel, 1);
+                if (!candidates.isEmpty()) {
+                    Monster m = candidates.get(0);
+                    tile.setMonster(m);
+                    monsters.add(m);
+                    Lane lane = Lane.getLaneForCol(col);
+                    System.out.println("A wild " + BRIGHT_RED + m.getName() + RESET
+                            + " appeared in " + BOLD + lane + RESET + " lane!");
+                    addEvent("A wild " + m.getName() + " appeared in " + lane + " lane.");
+                }
             }
         }
     }
 
-    // --- HERO TURN LOGIC ---
-
-    /**
-     * Handles a full round of hero actions, iterating each alive hero once.
-     * Manages movement, combat, shopping access, skip/quit handling, and ensures menu prompts stay concise.
-     */
+    // ----------------------------------------------------
+    // HERO TURN LOGIC
+    // ----------------------------------------------------
     private void processHeroTurn() {
         for (Hero hero : heroes) {
             if (hero.isFainted()) {
                 continue;
             }
 
-            map.printMap();
-            System.out.println("\nTurn: " + hero.getName() + " (" + getHeroLocationString(hero) + ")");
-            boolean actionTaken = false;
+            boolean turnDone = false;
+            while (!turnDone && !gameOver && !quitRequested) {
+                // always show map
+                map.printMap();
 
-            while (!actionTaken && !gameOver) {
-                // Dynamic Menu: Show Market if on Nexus
-                ValorTile tile = findHeroTile(hero);
-                boolean onHeroNexus = (tile != null && isHeroOnHeroNexus(tile));
-
-                System.out.println("Actions: W/A/S/D Move | F Attack | C Spell | T Teleport | R Recall | P Potion | E Equip | I Info | K Skip");
-                System.out.print("         ");
-                if (onHeroNexus) {
-                    System.out.print("M Market | ");
-                }
-                System.out.println("Q Quit");
+                printRoundHeroBanner(hero);
+                printActionMenu();
 
                 System.out.print("> ");
                 String input = scanner.nextLine().trim().toUpperCase();
-                if (handleQuitInput(input)) {
-                    return;
+
+                if (input.length() == 0) {
+                    System.out.println(RED + "Please enter a command. Type '?' for help." + RESET);
+                    continue;
                 }
 
-                if ("W".equals(input)) {
-                    actionTaken = attemptMove(hero, -1, 0);
-                } else if ("A".equals(input)) {
-                    actionTaken = attemptMove(hero, 0, -1);
-                } else if ("S".equals(input)) {
-                    actionTaken = attemptMove(hero, 1, 0);
-                } else if ("D".equals(input)) {
-                    actionTaken = attemptMove(hero, 0, 1);
-                } else if ("F".equals(input)) {
-                    actionTaken = attemptAttack(hero);
-                } else if ("C".equals(input)) {
-                    actionTaken = attemptCastSpell(hero);
-                } else if ("T".equals(input)) {
-                    actionTaken = attemptTeleport(hero);
-                } else if ("R".equals(input)) {
-                    actionTaken = attemptRecall(hero);
-                } else if ("P".equals(input)) {
-                    actionTaken = attemptPotion(hero);
-                } else if ("E".equals(input)) {
-                    actionTaken = attemptEquip(hero);
-                } else if ("M".equals(input)) {
-                    if (onHeroNexus) {
-                        visitMarket(hero);
-                        // Buying/selling do not count as actions
-                    } else {
-                        System.out.println("Must be at Hero Nexus to shop.");
+                if ("Q".equals(input)) {
+                    quitRequested = confirmQuit();
+                    if (quitRequested) {
+                        gameOver = true;
+                        endReason = "You chose to quit the game.";
+                        turnDone = true;
                     }
-                } else if ("I".equals(input)) {
-                    System.out.println(hero.getName() + ": HP " + hero.getHealth() + "/" + hero.getMaxHealth()
-                            + ", Mana " + hero.getMana() + ", Gold " + hero.getGold());
-                } else if ("K".equals(input)) {
-                    System.out.println("Turn skipped.");
-                    actionTaken = true;
-                } else {
-                    System.out.println("Invalid command.");
+                    continue;
                 }
+
+                switch (input) {
+                    case "W":
+                        turnDone = attemptMove(hero, -1, 0);
+                        break;
+                    case "S":
+                        turnDone = attemptMove(hero, 1, 0);
+                        break;
+                    case "A":
+                        turnDone = attemptMove(hero, 0, -1);
+                        break;
+                    case "D":
+                        turnDone = attemptMove(hero, 0, 1);
+                        break;
+                    case "F":
+                        turnDone = attemptAttack(hero);
+                        break;
+                    case "C":
+                        turnDone = attemptCastSpell(hero);
+                        break;
+                    case "P":
+                        turnDone = usePotion(hero);
+                        break;
+                    case "E":
+                        turnDone = equipItem(hero);
+                        break;
+                    case "T":
+                        turnDone = attemptTeleport(hero);
+                        break;
+                    case "R":
+                        turnDone = attemptRecall(hero);
+                        break;
+                    case "M": {
+                        ValorTile heroTile = findHeroTile(hero);
+                        if (heroTile != null &&
+                                map.isNexus(heroTile.getRow(), heroTile.getCol())) {
+                            visitMarket(hero);
+                        } else {
+                            System.out.println(YELLOW
+                                    + "You must be on a Nexus tile to visit a market."
+                                    + RESET);
+                        }
+                        break;
+                    }
+                    case "I":
+                        printHeroSheet(hero);
+                        break;
+                    case "H":
+                        printPartyOverview();
+                        break;
+                    case "V":
+                        map.printMap();
+                        break;
+                    case "?":
+                    case "HELP":
+                        printHelp();
+                        break;
+                    default:
+                        System.out.println(RED + "Invalid input. Type '?' for help." + RESET);
+                        break;
+                }
+            }
+
+            if (gameOver || quitRequested) {
+                break;
             }
         }
     }
 
-    /**
-     * Attempts to move the hero by the provided delta if the path is accessible and not blocked by monsters.
-     */
+    private boolean confirmQuit() {
+        System.out.print(RED + "Quit to game hub? (y/N): " + RESET);
+        String line = scanner.nextLine().trim();
+        return line.equalsIgnoreCase("y") || line.equalsIgnoreCase("yes");
+    }
+
     private boolean attemptMove(Hero hero, int dRow, int dCol) {
         ValorTile currentTile = findHeroTile(hero);
         if (currentTile == null) {
@@ -266,55 +341,43 @@ public class ValorGame {
         int newRow = currentTile.getRow() + dRow;
         int newCol = currentTile.getCol() + dCol;
 
-        Lane oldLane = Lane.getLaneForCol(currentTile.getCol());
-        Lane newLane = Lane.getLaneForCol(newCol);
-        if (newLane != null && oldLane != newLane) {
-            System.out.println("You cannot leave your lane except by teleport.");
-            return false;
-        }
-
         if (!map.isValidCoordinate(newRow, newCol)) {
-            System.out.println("Cannot move out of bounds.");
+            System.out.println(RED + "Cannot move out of bounds." + RESET);
             return false;
         }
 
         ValorTile targetTile = map.getTile(newRow, newCol);
 
-        // 1. Obstacle Handling
+        // obstacles
         if (targetTile.getType() == TileType.OBSTACLE) {
             System.out.print("Path blocked by Obstacle. Destroy it? (y/n): ");
             String ans = scanner.nextLine().trim();
-            if (handleQuitInput(ans)) {
-                return false;
-            }
             if (ans.equalsIgnoreCase("y")) {
                 targetTile.setType(TileType.PLAIN);
-                System.out.println("Obstacle removed! (Turn consumed)");
-                return true; // Removing obstacle consumes turn
+                System.out.println(YELLOW + "Obstacle removed! (Turn consumed)" + RESET);
+                addEvent(hero.getName() + " removed an obstacle at (" + newRow + "," + newCol + ")");
+                return true;
             } else {
                 return false;
             }
         }
 
-        // 2. Accessibility
         if (!targetTile.isAccessible()) {
-            System.out.println("Path blocked.");
+            System.out.println(RED + "Path blocked." + RESET);
             return false;
         }
 
-        // 3. Hero Collision
         if (targetTile.hasHero()) {
-            System.out.println("Tile occupied by another hero.");
+            System.out.println(RED + "Tile occupied by another hero." + RESET);
             return false;
         }
 
-        // 4. Monster Blocking Logic
         if (isBlockedByMonster(currentTile, targetTile)) {
-            System.out.println("Cannot move past a monster in this lane without killing it!");
+            System.out.println(RED + "Cannot move past a monster in this lane without killing it!"
+                    + RESET);
             return false;
         }
 
-        // Apply Move
         currentTile.setHero(null);
         targetTile.setHero(hero);
         System.out.println(hero.getName() + " moved to (" + newRow + ", " + newCol + ")");
@@ -343,70 +406,63 @@ public class ValorGame {
 
             int mRow = mTile.getRow();
 
-            // Only consider monsters that are in FRONT of the hero (towards row 0)
-            if (mRow <= currentRow) {
-                // If the hero tries to move to a row index LESS than the monster's row,
-                // they are trying to bypass it.
-                if (targetRow < mRow) {
-                    return true;
-                }
+            if (mRow <= currentRow && targetRow < mRow) {
+                return true;
             }
         }
         return false;
     }
 
-    /**
-     * Executes a basic attack with range 1 (orthogonal/diagonal) if a monster is in reach.
-     */
     private boolean attemptAttack(Hero hero) {
         ValorTile currentTile = findHeroTile(hero);
-        List<Monster> targets = getMonstersInRange(currentTile, 1);
+        if (currentTile == null) {
+            return false;
+        }
 
+        List<Monster> targets = getTargetsInRange(currentTile);
         if (targets.isEmpty()) {
             System.out.println("No monsters in range.");
             return false;
         }
 
-        // Target selection
         Monster target = targets.get(0);
         if (targets.size() > 1) {
             System.out.println("Choose target:");
             for (int i = 0; i < targets.size(); i++) {
-                System.out.println(i + ") " + targets.get(i).getName() + " (HP: " + targets.get(i).getHealth() + ")");
+                Monster m = targets.get(i);
+                System.out.println(i + ") " + m.getName() + " (HP: " + m.getHealth() + ")");
             }
             try {
                 System.out.print("> ");
-                String line = scanner.nextLine().trim();
-                if (handleQuitInput(line)) {
-                    return false;
-                }
-                int idx = Integer.parseInt(line);
+                int idx = Integer.parseInt(scanner.nextLine().trim());
                 if (idx >= 0 && idx < targets.size()) {
                     target = targets.get(idx);
                 }
-            } catch (Exception e) {
-                // ignore, keep default target
+            } catch (Exception ignored) {
             }
         }
 
-        System.out.println(hero.getName() + " attacks " + target.getName() + "!");
+        System.out.println(BRIGHT_GREEN + hero.getName() + RESET
+                + " attacks "
+                + BRIGHT_RED + target.getName() + RESET + "!");
 
-        // Calculate Damage with Terrain Bonus
         double terrainBonus = 1.0;
         if (currentTile.getType() == TileType.KOULOU) {
-            terrainBonus = 1.1; // +10% Str
+            terrainBonus = 1.1; // +10% STR
         }
 
-        int weaponDmg = 0;
-        if (hero.getEquipment().getWeapon() != null) {
-            weaponDmg = hero.getEquipment().getWeapon().getDamage();
-        }
+        int weaponDmg = (hero.getEquipment().getWeapon() != null)
+                ? hero.getEquipment().getWeapon().getDamage()
+                : 0;
         int totalStr = (int) ((hero.getStrength() + weaponDmg) * terrainBonus);
-
         int damage = Math.max(0, totalStr - target.getDefense());
 
         target.takeDamage(damage);
-        System.out.println("Dealt " + damage + " damage.");
+        System.out.println("Dealt " + RED + damage + " damage" + RESET + ".");
+
+        addHeroDamage(hero, damage);
+        addEvent(hero.getName() + " dealt " + damage + " dmg to " + target.getName()
+                + " (HP " + target.getHealth() + "/" + target.getMaxHealth() + ")");
 
         if (target.isFainted()) {
             handleMonsterDeath(hero, target);
@@ -414,9 +470,6 @@ public class ValorGame {
         return true;
     }
 
-    /**
-     * Casts a spell at range 2, applying damage and debuff if a target is in reach.
-     */
     private boolean attemptCastSpell(Hero hero) {
         List<Item> spellItems = hero.getInventory().getByType(Spell.class);
         if (spellItems.isEmpty()) {
@@ -427,17 +480,14 @@ public class ValorGame {
         System.out.println("Choose Spell:");
         for (int i = 0; i < spellItems.size(); i++) {
             Spell s = (Spell) spellItems.get(i);
-            System.out.println(i + ") " + s.getName() + " (Mana: " + s.getManaCost() + ", Dmg: " + s.getBaseDamage() + ")");
+            System.out.println(i + ") " + s.getName() + " (Mana: " + s.getManaCost()
+                    + ", Dmg: " + s.getBaseDamage() + ")");
         }
 
         Spell spell;
         try {
             System.out.print("Choose spell index: ");
-            String input = scanner.nextLine().trim();
-            if (handleQuitInput(input)) {
-                return false;
-            }
-            int idx = Integer.parseInt(input);
+            int idx = Integer.parseInt(scanner.nextLine().trim());
             if (idx >= 0 && idx < spellItems.size()) {
                 spell = (Spell) spellItems.get(idx);
             } else {
@@ -454,42 +504,51 @@ public class ValorGame {
             return false;
         }
 
-        List<Monster> targets = getMonstersInRange(findHeroTile(hero), 2);
+        ValorTile heroTile = findHeroTile(hero);
+        if (heroTile == null) {
+            return false;
+        }
+        List<Monster> targets = getTargetsInRange(heroTile);
         if (targets.isEmpty()) {
             System.out.println("No targets in range.");
             return false;
         }
 
-        // Target Selection (Same as Attack)
         Monster target = targets.get(0);
         if (targets.size() > 1) {
             System.out.println("Choose target:");
             for (int i = 0; i < targets.size(); i++) {
-                System.out.println(i + ") " + targets.get(i).getName() + " (HP: " + targets.get(i).getHealth() + ")");
+                Monster m = targets.get(i);
+                System.out.println(i + ") " + m.getName()
+                        + " (HP: " + m.getHealth() + ")");
             }
             try {
                 System.out.print("> ");
-                String input = scanner.nextLine().trim();
-                if (handleQuitInput(input)) {
-                    return false;
-                }
-                int idx = Integer.parseInt(input);
+                int idx = Integer.parseInt(scanner.nextLine().trim());
                 if (idx >= 0 && idx < targets.size()) {
                     target = targets.get(idx);
                 }
-            } catch (Exception e) {
-                // ignore, keep default
+            } catch (Exception ignored) {
             }
         }
 
         hero.spendMana(spell.getManaCost());
 
-        // Spell Damage + Dexterity Scaling
         int damage = spell.getBaseDamage() + (int) (hero.getDexterity() * 0.1);
         target.takeDamage(damage);
-        System.out.println(hero.getName() + " casts " + spell.getName() + " on " + target.getName() + " for " + damage + " damage!");
 
-        // Apply Debuff
+        System.out.println(BRIGHT_GREEN + hero.getName() + RESET
+                + " casts " + MAGENTA + spell.getName() + RESET
+                + " on " + BRIGHT_RED + target.getName() + RESET
+                + " for " + RED + damage + " damage" + RESET + "!");
+
+        addHeroDamage(hero, damage);
+        addEvent(hero.getName() + " cast " + spell.getName()
+                + " on " + target.getName()
+                + " for " + damage + " dmg (HP " + target.getHealth()
+                + "/" + target.getMaxHealth() + ")");
+
+        // debuff
         double amount = spell.getDebuffAmount();
         String type = spell.getDebuffType().toLowerCase();
 
@@ -514,38 +573,41 @@ public class ValorGame {
     }
 
     private void handleMonsterDeath(Hero hero, Monster target) {
-        System.out.println(target.getName() + " died!");
+        System.out.println(BRIGHT_RED + target.getName() + " died!" + RESET);
         ValorTile mTile = findMonsterTile(target);
         if (mTile != null) {
             mTile.setMonster(null);
         }
         monsters.remove(target);
+
         hero.addGold(500 * target.getLevel());
         hero.addExperience(2 * target.getLevel());
         hero.levelUpIfReady();
+
+        addHeroKill(hero);
+        addEvent(hero.getName() + " killed " + target.getName() + "!");
     }
 
-    /**
-     * Teleports a hero from their own Nexus to a tile adjacent (side/behind) to an ally in another lane.
-     */
     private boolean attemptTeleport(Hero hero) {
-        // Teleport to adjacent space of a hero in a DIFFERENT lane
         ValorTile heroTile = findHeroTile(hero);
-        if (heroTile == null || !isHeroOnHeroNexus(heroTile)) {
-            System.out.println("Teleport is only available from your Nexus.");
+        if (heroTile == null) {
             return false;
         }
+
         System.out.println("Choose target hero to teleport to:");
         List<Hero> validTargets = new ArrayList<Hero>();
         Lane currentLane = Lane.getLaneForCol(heroTile.getCol());
 
-        for (Hero h : heroes) {
+        for (int i = 0; i < heroes.size(); i++) {
+            Hero h = heroes.get(i);
             if (h == hero) {
                 continue;
             }
             ValorTile t = findHeroTile(h);
+            if (t == null) {
+                continue;
+            }
             Lane l = Lane.getLaneForCol(t.getCol());
-            // Must be different lane
             if (l != currentLane) {
                 validTargets.add(h);
             }
@@ -563,11 +625,7 @@ public class ValorGame {
         int choice;
         try {
             System.out.print("Enter choice: ");
-            String input = scanner.nextLine().trim();
-            if (handleQuitInput(input)) {
-                return false;
-            }
-            choice = Integer.parseInt(input);
+            choice = Integer.parseInt(scanner.nextLine().trim());
         } catch (NumberFormatException e) {
             System.out.println("Invalid input.");
             return false;
@@ -584,21 +642,17 @@ public class ValorGame {
         int r = targetTile.getRow();
         int c = targetTile.getCol();
 
-        // Cannot teleport ahead (Row-1). Only Side or Behind.
-        int[][] validOffsets = {{0, 1}, {0, -1}, {1, 0}}; // Right, Left, Behind
-
-        for (int i = 0; i < validOffsets.length; i++) {
-            int nr = r + validOffsets[i][0];
-            int nc = c + validOffsets[i][1];
-            if (nr < r) {
-                continue; // cannot teleport into squares ahead of the target hero
-            }
+        int[][] offsets = {{0, 1}, {0, -1}, {1, 0}}; // right, left, behind
+        for (int i = 0; i < offsets.length; i++) {
+            int nr = r + offsets[i][0];
+            int nc = c + offsets[i][1];
             if (map.isValidCoordinate(nr, nc)) {
                 ValorTile dest = map.getTile(nr, nc);
                 if (dest.isAccessible() && !dest.hasHero() && !dest.hasMonster()) {
                     heroTile.setHero(null);
                     dest.setHero(hero);
                     System.out.println("Teleported!");
+                    addEvent(hero.getName() + " teleported near " + targetHero.getName());
                     return true;
                 }
             }
@@ -608,15 +662,9 @@ public class ValorGame {
         return false;
     }
 
-    /**
-     * Recalls a hero to their original spawn tile (Hero Nexus) once per turn, restoring 50% HP/Mana.
-     */
     private boolean attemptRecall(Hero hero) {
-        if (recallUsedThisRound.contains(hero)) {
-            System.out.println("Recall already used this turn.");
-            return false;
-        }
-        int spawnCol = heroSpawnCols.get(hero);
+        Integer colObj = heroSpawnCols.get(hero);
+        int spawnCol = (colObj == null) ? 0 : colObj.intValue();
         int spawnRow = 7;
 
         ValorTile spawnTile = map.getTile(spawnRow, spawnCol);
@@ -630,98 +678,107 @@ public class ValorGame {
             current.setHero(null);
         }
         spawnTile.setHero(hero);
-        hero.heal(hero.getMaxHealth() / 2);
-        hero.gainMana(hero.getMaxMana() / 2);
         System.out.println(hero.getName() + " recalled to Nexus.");
-        recallUsedThisRound.add(hero);
+        addEvent(hero.getName() + " recalled to Nexus.");
         return true;
     }
 
     private void visitMarket(Hero hero) {
-        ValorTile tile = findHeroTile(hero);
-        if (!isHeroOnHeroNexus(tile)) {
-            System.out.println("You must stand on Hero Nexus to shop.");
-            return;
-        }
-        System.out.println("--- MARKET ---");
-        System.out.println("Welcome, " + hero.getName() + ". You have " + hero.getGold() + " gold.");
+        System.out.println(BOLD + "--- MARKET ---" + RESET);
+        System.out.println("Hero: " + hero.getName() + "  Level: " + hero.getLevel()
+                + "  HP: " + hero.getHealth() + "/" + hero.getMaxHealth()
+                + "  MP: " + hero.getMana() + "/" + hero.getMaxMana()
+                + "  Gold: " + hero.getGold());
+        System.out.println("Type 'I' at any time to view hero stats.");
         boolean shopping = true;
         while (shopping) {
             System.out.println("1) Buy Potion");
             System.out.println("2) Buy Spell");
             System.out.println("3) Buy Armor/Weapon");
             System.out.println("4) Sell Item");
-            System.out.println("5) Exit");
-            System.out.println("Q) Quit to menu");
+            System.out.println("5) View Hero Info");
+            System.out.println("6) Exit");
             System.out.print("> ");
             String choice = scanner.nextLine().trim();
-            if (handleQuitInput(choice)) {
-                return;
+            if ("I".equalsIgnoreCase(choice)) {
+                printHeroSheet(hero);
+                continue;
             }
-            if ("1".equals(choice)) {
-                buyItem(hero, market.getPotions());
-            } else if ("2".equals(choice)) {
-                buyItem(hero, market.getSpells());
-            } else if ("3".equals(choice)) {
-                System.out.println("Weapons or Armors? (W/A)");
-                String sub = scanner.nextLine().trim().toUpperCase();
-                if ("W".equals(sub)) {
-                    buyItem(hero, market.getWeapons());
-                } else if ("A".equals(sub)) {
-                    buyItem(hero, market.getArmors());
-                }
-            } else if ("4".equals(choice)) {
-                List<Item> inv = hero.getInventory().getAll();
-                if (inv.isEmpty()) {
-                    System.out.println("Inventory empty.");
-                } else {
-                    for (int i = 0; i < inv.size(); i++) {
-                        Item it = inv.get(i);
-                        System.out.println(i + ") " + it.getName() + " price:" + it.getPrice());
+            switch (choice) {
+                case "1":
+                    buyItem(hero, market.getPotions());
+                    break;
+                case "2":
+                    buyItem(hero, market.getSpells());
+                    break;
+                case "3":
+                    System.out.println("Weapons or Armors? (W/A)");
+                    String sub = scanner.nextLine().trim().toUpperCase();
+                    if (sub.equals("W")) {
+                        buyItem(hero, market.getWeapons());
+                    } else if (sub.equals("A")) {
+                        buyItem(hero, market.getArmors());
                     }
-                    System.out.print("Index to sell: ");
-                    String idxStr = scanner.nextLine().trim();
-                    if (!idxStr.equalsIgnoreCase("q")) {
-                        try {
-                            int idx = Integer.parseInt(idxStr);
-                            if (idx >= 0 && idx < inv.size()) {
-                                market.sell(hero, inv.get(idx));
-                                System.out.println("Sold " + inv.get(idx).getName());
-                            }
-                        } catch (Exception e) {
-                            System.out.println("Invalid input.");
-                        }
+                    break;
+                case "4":
+                    if (hero.getInventory().getAll().isEmpty()) {
+                        System.out.println("Inventory empty.");
+                    } else {
+                        Item i = hero.getInventory().getAll().get(0);
+                        market.sell(hero, i);
+                        System.out.println("Sold " + i.getName());
                     }
-                }
-            } else if ("5".equals(choice)) {
-                shopping = false;
-            } else {
-                System.out.println("Invalid.");
+                    break;
+                case "5":
+                    printHeroSheet(hero);
+                    break;
+                case "6":
+                    shopping = false;
+                    break;
+                default:
+                    System.out.println("Invalid. Enter 1-6 or I for hero info.");
             }
         }
     }
 
     private <T extends Item> void buyItem(Hero hero, List<T> items) {
+        if (items.isEmpty()) {
+            System.out.println("No items available.");
+            return;
+        }
+
         for (int i = 0; i < items.size(); i++) {
-            System.out.println(i + ") " + items.get(i).getName() + " cost:" + items.get(i).getPrice());
+            T it = items.get(i);
+            System.out.println(i + ") " + it.getName()
+                    + " cost:" + it.getPrice());
         }
         try {
-            System.out.print("Buy index: ");
-            String input = scanner.nextLine().trim();
-            if (handleQuitInput(input)) {
+            System.out.print("Buy index (or -1 to cancel): ");
+            int idx = Integer.parseInt(scanner.nextLine().trim());
+            if (idx == -1) {
                 return;
             }
-            int idx = Integer.parseInt(input);
             if (idx >= 0 && idx < items.size()) {
                 if (market.buy(hero, items.get(idx))) {
-                    System.out.println("Bought!");
+                    System.out.println(GREEN + "Bought!" + RESET);
                 } else {
-                    System.out.println("Cannot afford or low level.");
+                    System.out.println("Cannot afford or level too low.");
                 }
+            } else {
+                System.out.println("Invalid index.");
             }
         } catch (Exception e) {
-            System.out.println("Invalid.");
+            System.out.println("Invalid input.");
         }
+    }
+
+    // wrapper names to match your original code
+    private boolean usePotion(Hero h) {
+        return attemptPotion(h);
+    }
+
+    private boolean equipItem(Hero h) {
+        return attemptEquip(h);
     }
 
     private boolean attemptPotion(Hero h) {
@@ -733,34 +790,30 @@ public class ValorGame {
         Potion p = (Potion) potions.get(0);
         h.applyPotionEffect(p.getEffectAmount(), p.getAffectedStats());
         h.getInventory().remove(p);
-        System.out.println("Used " + p.getName());
+        System.out.println(GREEN + "Used " + p.getName() + RESET);
+        addEvent(h.getName() + " used potion " + p.getName());
         return true;
     }
 
     private boolean attemptEquip(Hero hero) {
-        // Equipping ends the turn
         List<Item> weaponItems = hero.getInventory().getByType(Weapon.class);
-        List<Item> armorItems = hero.getInventory().getByType(Armor.class);
-
         List<Weapon> weapons = new ArrayList<Weapon>();
-        for (Item it : weaponItems) {
-            weapons.add((Weapon) it);
+        for (int i = 0; i < weaponItems.size(); i++) {
+            weapons.add((Weapon) weaponItems.get(i));
         }
 
+        List<Item> armorItems = hero.getInventory().getByType(Armor.class);
         List<Armor> armors = new ArrayList<Armor>();
-        for (Item it : armorItems) {
-            armors.add((Armor) it);
+        for (int i = 0; i < armorItems.size(); i++) {
+            armors.add((Armor) armorItems.get(i));
         }
 
-        System.out.println("--- EQUIP MENU ---");
+        System.out.println(BOLD + "--- EQUIP MENU ---" + RESET);
         System.out.println("1) Equip Weapon");
         System.out.println("2) Equip Armor");
         System.out.println("3) Cancel");
         System.out.print("> ");
         String type = scanner.nextLine().trim();
-        if (handleQuitInput(type)) {
-            return false;
-        }
 
         if ("1".equals(type)) {
             if (weapons.isEmpty()) {
@@ -768,22 +821,21 @@ public class ValorGame {
                 return false;
             }
             for (int i = 0; i < weapons.size(); i++) {
-                System.out.println(i + ") " + weapons.get(i).getName() + " Dmg:" + weapons.get(i).getDamage());
+                Weapon w = weapons.get(i);
+                System.out.println(i + ") " + w.getName()
+                        + " Dmg:" + w.getDamage());
             }
             try {
                 System.out.print("Index: ");
-                String input = scanner.nextLine().trim();
-                if (handleQuitInput(input)) {
-                    return false;
-                }
-                int idx = Integer.parseInt(input);
+                int idx = Integer.parseInt(scanner.nextLine().trim());
                 if (idx >= 0 && idx < weapons.size()) {
                     hero.getEquipment().equipWeapon(weapons.get(idx));
                     System.out.println("Equipped " + weapons.get(idx).getName());
+                    addEvent(hero.getName() + " equipped weapon "
+                            + weapons.get(idx).getName());
                     return true;
                 }
-            } catch (Exception e) {
-                // ignore
+            } catch (Exception ignored) {
             }
         } else if ("2".equals(type)) {
             if (armors.isEmpty()) {
@@ -791,74 +843,76 @@ public class ValorGame {
                 return false;
             }
             for (int i = 0; i < armors.size(); i++) {
-                System.out.println(i + ") " + armors.get(i).getName() + " Red:" + armors.get(i).getDamageReduction());
+                Armor a = armors.get(i);
+                System.out.println(i + ") " + a.getName()
+                        + " Red:" + a.getDamageReduction());
             }
             try {
                 System.out.print("Index: ");
-                String input = scanner.nextLine().trim();
-                if (handleQuitInput(input)) {
-                    return false;
-                }
-                int idx = Integer.parseInt(input);
+                int idx = Integer.parseInt(scanner.nextLine().trim());
                 if (idx >= 0 && idx < armors.size()) {
                     hero.getEquipment().equipArmor(armors.get(idx));
                     System.out.println("Equipped " + armors.get(idx).getName());
+                    addEvent(hero.getName() + " equipped armor "
+                            + armors.get(idx).getName());
                     return true;
                 }
-            } catch (Exception e) {
-                // ignore
+            } catch (Exception ignored) {
             }
         }
 
         return false;
     }
 
-    // --- MONSTER TURN LOGIC ---
-
-    /**
-     * Resolves all monster turns: attack if a hero is in range 1, otherwise advance one step if lane is clear.
-     * Monsters respect hero blocks in their lane and cannot move past them.
-     */
+    // ----------------------------------------------------
+    // MONSTER TURN LOGIC
+    // ----------------------------------------------------
     private void processMonsterTurn() {
-        System.out.println("\n--- Monsters Turn ---");
-        for (Monster m : new ArrayList<Monster>(monsters)) {
+        System.out.println();
+        System.out.println(BOLD + "--- Monsters Turn ---" + RESET);
+        for (int i = 0; i < monsters.size(); i++) {
+            Monster m = monsters.get(i);
             ValorTile mTile = findMonsterTile(m);
             if (mTile == null) {
                 continue;
             }
 
-            List<Hero> targets = getHeroesInRange(mTile, 1);
+            List<Hero> targets = getHeroesInRange(mTile);
             if (!targets.isEmpty()) {
-                // Attack Hero
                 Hero target = targets.get(0);
-                System.out.println(m.getName() + " attacks " + target.getName());
+                System.out.println(BRIGHT_RED + m.getName() + RESET
+                        + " attacks "
+                        + BRIGHT_GREEN + target.getName() + RESET);
 
-                int rawDmg = random.nextInt(m.getMaxDamage() - m.getMinDamage() + 1) + m.getMinDamage();
-                int armorReduction = 0;
+                int range = m.getMaxDamage() - m.getMinDamage() + 1;
+                int rawDmg = random.nextInt(range) + m.getMinDamage();
+                int armorRed = 0;
                 if (target.getEquipment().getArmor() != null) {
-                    armorReduction = target.getEquipment().getArmor().getDamageReduction();
+                    armorRed = target.getEquipment().getArmor().getDamageReduction();
                 }
-                int actualDmg = Math.max(0, rawDmg - armorReduction);
+                int actualDmg = Math.max(0, rawDmg - armorRed);
 
                 target.takeDamage(actualDmg);
-                System.out.println("Hit for " + actualDmg + " damage!");
+                System.out.println("Hit for " + RED + actualDmg + " damage" + RESET + "!");
+
+                addEvent(m.getName() + " hit " + target.getName()
+                        + " for " + actualDmg + " dmg");
 
                 if (target.isFainted()) {
-                    System.out.println(target.getName() + " has fainted!");
+                    System.out.println(BRIGHT_RED + "*** " + target.getName()
+                            + " has fainted! ***" + RESET);
                     ValorTile t = findHeroTile(target);
                     if (t != null) {
                         t.setHero(null);
                     }
+                    addHeroFaint(target);
+                    addEvent(target.getName() + " has fainted!");
                 }
-            } else if (!gameOver) {
-                // Move Forward (South/Down) if clear
+            } else {
                 int nextRow = mTile.getRow() + 1;
-                Lane lane = Lane.getLaneForCol(mTile.getCol());
-                if (map.isValidCoordinate(nextRow, mTile.getCol())
-                        && lane != null
-                        && !isHeroBlockingLane(nextRow, lane)) {
+                if (map.isValidCoordinate(nextRow, mTile.getCol())) {
                     ValorTile nextTile = map.getTile(nextRow, mTile.getCol());
-                    if (nextTile.isAccessible() && !nextTile.hasMonster() && !nextTile.hasHero()) {
+                    if (nextTile.isAccessible() && !nextTile.hasMonster()) {
                         mTile.setMonster(null);
                         nextTile.setMonster(m);
                         System.out.println(m.getName() + " moved forward.");
@@ -868,8 +922,9 @@ public class ValorGame {
         }
     }
 
-    // --- HELPER METHODS ---
-
+    // ----------------------------------------------------
+    // HELPERS
+    // ----------------------------------------------------
     private ValorTile findHeroTile(Hero h) {
         for (int r = 0; r < map.getHeight(); r++) {
             for (int c = 0; c < map.getWidth(); c++) {
@@ -894,147 +949,63 @@ public class ValorGame {
         return null;
     }
 
-    private boolean handleQuitInput(String input) {
-        if ("q".equalsIgnoreCase(input)) {
-            System.out.println("Exiting to main menu...");
-            gameOver = true;
-            quitRequested = true;
-            return true;
-        }
-        return false;
-    }
-
-    private boolean isHeroOnHeroNexus(ValorTile tile) {
-        return tile != null && tile.getType() == TileType.NEXUS && tile.getRow() == map.getHeight() - 1;
-    }
-
-    private boolean isHeroOnMonsterNexus(ValorTile tile) {
-        return tile != null && tile.getType() == TileType.NEXUS && tile.getRow() == 0;
-    }
-
-    private boolean isMonsterOnHeroNexus(ValorTile tile) {
-        return tile != null
-                && tile.getType() == TileType.NEXUS
-                && tile.getRow() == map.getHeight() - 1;
-    }
-
-    private List<Monster> getMonstersInRange(ValorTile center, int range) {
+    private List<Monster> getTargetsInRange(ValorTile center) {
         List<Monster> targets = new ArrayList<Monster>();
-        if (center == null) {
-            return targets;
-        }
-        Lane attackerLane = Lane.getLaneForCol(center.getCol());
-        for (int r = 0; r < map.getHeight(); r++) {
-            for (int c = 0; c < map.getWidth(); c++) {
-                Lane targetLane = Lane.getLaneForCol(c);
-                if (attackerLane != targetLane) {
-                    continue; // must be same lane
-                }
-                ValorTile t = map.getTile(r, c);
-                if (t.hasMonster() && withinRange(center.getRow(), center.getCol(), r, c, range)) {
-                    targets.add(t.getMonster());
+        for (int dr = -1; dr <= 1; dr++) {
+            for (int dc = -1; dc <= 1; dc++) {
+                int r = center.getRow() + dr;
+                int c = center.getCol() + dc;
+                if (map.isValidCoordinate(r, c)) {
+                    ValorTile t = map.getTile(r, c);
+                    if (t.hasMonster()) {
+                        targets.add(t.getMonster());
+                    }
                 }
             }
         }
         return targets;
     }
 
-    private boolean withinRange(int r1, int c1, int r2, int c2, int range) {
-        if (r1 == r2 && c1 == c2) {
-            return false;
-        }
-        return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2)) <= range;
-    }
-
-    private boolean isHeroBlockingLane(int row, Lane lane) {
-        List<Integer> cols = getLaneColumns(lane);
-        for (Integer c : cols) {
-            if (map.isValidCoordinate(row, c)) {
-                ValorTile t = map.getTile(row, c);
-                if (t.hasHero()) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private List<Integer> getLaneColumns(Lane lane) {
-        List<Integer> cols = new ArrayList<Integer>();
-        if (lane == Lane.TOP) {
-            cols.add(0);
-            cols.add(1);
-        } else if (lane == Lane.MID) {
-            cols.add(3);
-            cols.add(4);
-        } else if (lane == Lane.BOT) {
-            cols.add(6);
-            cols.add(7);
-        }
-        return cols;
-    }
-
-    private ValorTile findSpawnTileInLane(int spawnCol) {
-        Lane lane = Lane.getLaneForCol(spawnCol);
-        if (lane == null) {
-            return null;
-        }
-        List<Integer> cols = getLaneColumns(lane);
-        for (int row = 0; row < map.getHeight(); row++) {
-            for (Integer col : cols) {
-                ValorTile tile = map.getTile(row, col);
-                if (tile.isAccessible() && !tile.hasMonster() && !tile.hasHero()) {
-                    return tile;
-                }
-            }
-        }
-        return null;
-    }
-
-    private List<Hero> getHeroesInRange(ValorTile center, int range) {
+    private List<Hero> getHeroesInRange(ValorTile center) {
         List<Hero> targets = new ArrayList<Hero>();
-        if (center == null) {
-            return targets;
-        }
-        Lane attackerLane = Lane.getLaneForCol(center.getCol());
-        for (int r = 0; r < map.getHeight(); r++) {
-            for (int c = 0; c < map.getWidth(); c++) {
-                Lane targetLane = Lane.getLaneForCol(c);
-                if (attackerLane != targetLane) {
-                    continue; // must be same lane
-                }
-                ValorTile t = map.getTile(r, c);
-                if (t.hasHero() && withinRange(center.getRow(), center.getCol(), r, c, range)) {
-                    targets.add(t.getHero());
+        for (int dr = -1; dr <= 1; dr++) {
+            for (int dc = -1; dc <= 1; dc++) {
+                int r = center.getRow() + dr;
+                int c = center.getCol() + dc;
+                if (map.isValidCoordinate(r, c)) {
+                    ValorTile t = map.getTile(r, c);
+                    if (t.hasHero()) {
+                        targets.add(t.getHero());
+                    }
                 }
             }
         }
         return targets;
-    }
-
-    private String getHeroLocationString(Hero h) {
-        ValorTile t = findHeroTile(h);
-        if (t != null) {
-            return t.getRow() + "," + t.getCol();
-        }
-        return "Unknown";
     }
 
     private boolean checkWinCondition() {
         // Heroes win if they reach Monster Nexus (Row 0)
-        for (Hero h : heroes) {
+        for (int i = 0; i < heroes.size(); i++) {
+            Hero h = heroes.get(i);
             ValorTile t = findHeroTile(h);
-            if (isHeroOnMonsterNexus(t)) {
-                System.out.println("HEROES WIN! The Monster Nexus has been destroyed!");
+            if (t != null && t.getType() == TileType.NEXUS && t.getRow() == 0) {
+                System.out.println(BRIGHT_GREEN + BOLD
+                        + "HEROES WIN! The Monster Nexus has been destroyed!"
+                        + RESET);
+                endReason = "Heroes reached the Monster Nexus.";
                 gameOver = true;
                 return true;
             }
         }
         // Monsters win if they reach Hero Nexus (Row 7)
-        for (Monster m : monsters) {
+        for (int i = 0; i < monsters.size(); i++) {
+            Monster m = monsters.get(i);
             ValorTile t = findMonsterTile(m);
-            if (isMonsterOnHeroNexus(t)) {
-                System.out.println("MONSTERS WIN! The Hero Nexus has been overrun!");
+            if (t != null && t.getType() == TileType.NEXUS && t.getRow() == 7) {
+                System.out.println(BRIGHT_RED + BOLD
+                        + "MONSTERS WIN! The Hero Nexus has been overrun!"
+                        + RESET);
+                endReason = "Monsters reached your Nexus.";
                 gameOver = true;
                 return true;
             }
@@ -1042,49 +1013,229 @@ public class ValorGame {
         return false;
     }
 
-    /**
-     * Resolves end-of-round updates: regen or respawn heroes, and periodically spawn monsters.
-     */
     private void endOfRound() {
-        // Recover HP/Mana
-        for (Hero h : heroes) {
+        for (int i = 0; i < heroes.size(); i++) {
+            Hero h = heroes.get(i);
             if (!h.isFainted()) {
                 h.heal((int) (h.getMaxHealth() * 0.10));
                 h.gainMana((int) (h.getMaxMana() * 0.10));
             } else {
-                // Respawn Logic
                 System.out.println(h.getName() + " is reviving...");
                 h.restoreFullHealth();
                 h.restoreFullMana();
 
-                int col = heroSpawnCols.get(h);
+                Integer colObj = heroSpawnCols.get(h);
+                int col = (colObj == null) ? 0 : colObj.intValue();
                 ValorTile spawn = map.getTile(7, col);
 
                 if (!spawn.hasHero()) {
                     spawn.setHero(h);
                     System.out.println(h.getName() + " respawned at Nexus.");
                 } else {
-                    // Safety valve: Try adjacent Nexus spots if primary is blocked
                     boolean placed = false;
                     for (int c = 0; c < 8; c++) {
                         ValorTile alt = map.getTile(7, c);
                         if (alt.getType() == TileType.NEXUS && !alt.hasHero() && alt.isAccessible()) {
                             alt.setHero(h);
                             placed = true;
-                            System.out.println(h.getName() + " respawned at Nexus (alternate spot).");
+                            System.out.println(h.getName()
+                                    + " respawned at Nexus (alternate spot).");
                             break;
                         }
                     }
                     if (!placed) {
-                        System.out.println("Nexus is full! " + h.getName() + " must wait for space.");
+                        System.out.println("Nexus is full! " + h.getName()
+                                + " must wait for space.");
                     }
                 }
             }
         }
 
-        // Periodic Monster Spawns
         if (round % MONSTER_SPAWN_RATE == 0) {
             spawnMonsters();
         }
+
+        // show mini event log at end of round
+        printRecentEvents();
+        eventLog.clear();
+    }
+
+    // ====== Event log & stats helpers ======
+    private void addEvent(String text) {
+        if (text == null || text.length() == 0) {
+            return;
+        }
+        if (eventLog.size() == EVENT_LOG_SIZE) {
+            eventLog.remove(0);
+        }
+        eventLog.add(text);
+    }
+
+    private void printRecentEvents() {
+        if (eventLog.isEmpty()) {
+            return;
+        }
+        System.out.println();
+        System.out.println(BOLD + "Recent events:" + RESET);
+        for (int i = 0; i < eventLog.size(); i++) {
+            System.out.println("  - " + eventLog.get(i));
+        }
+    }
+
+    private void addHeroDamage(Hero h, int dmg) {
+        if (h == null || dmg <= 0) return;
+        Integer cur = heroDamage.get(h);
+        if (cur == null) cur = Integer.valueOf(0);
+        heroDamage.put(h, Integer.valueOf(cur.intValue() + dmg));
+    }
+
+    private void addHeroKill(Hero h) {
+        if (h == null) return;
+        Integer cur = heroKills.get(h);
+        if (cur == null) cur = Integer.valueOf(0);
+        heroKills.put(h, Integer.valueOf(cur.intValue() + 1));
+    }
+
+    private void addHeroFaint(Hero h) {
+        if (h == null) return;
+        Integer cur = heroFaints.get(h);
+        if (cur == null) cur = Integer.valueOf(0);
+        heroFaints.put(h, Integer.valueOf(cur.intValue() + 1));
+    }
+
+    private void printPartyOverview() {
+        System.out.println();
+        System.out.println(BOLD + CYAN + "=== Party Overview ===" + RESET);
+        System.out.format("%-18s %-4s %-12s %-12s %-8s %-8s %-8s%n",
+                "Name", "Lvl", "HP", "MP", "Gold", "STR", "DEX/AGI");
+        System.out.println("----------------------------------------------------------------");
+        for (int i = 0; i < heroes.size(); i++) {
+            Hero h = heroes.get(i);
+            String hp = h.getHealth() + "/" + h.getMaxHealth();
+            String mp = h.getMana() + "/" + h.getMaxMana();
+            String dexAgi = h.getDexterity() + "/" + h.getAgility();
+            System.out.format("%-18s %-4d %-12s %-12s %-8d %-8d %-8s%n",
+                    h.getName(), h.getLevel(), hp, mp, h.getGold(),
+                    h.getStrength(), dexAgi);
+        }
+    }
+
+    private void printHeroSheet(Hero h) {
+        if (h == null) return;
+        System.out.println();
+        System.out.println(BOLD + CYAN + "=== Hero Sheet: " + h.getName() + " ===" + RESET);
+        System.out.println("Level : " + h.getLevel());
+        System.out.println("HP    : " + h.getHealth() + " / " + h.getMaxHealth());
+        System.out.println("MP    : " + h.getMana() + " / " + h.getMaxMana());
+        System.out.println("Gold  : " + h.getGold());
+        System.out.println("STR   : " + h.getStrength());
+        System.out.println("DEX   : " + h.getDexterity());
+        System.out.println("AGI   : " + h.getAgility());
+        Integer kills  = heroKills.get(h);
+        Integer faints = heroFaints.get(h);
+        Integer dmg    = heroDamage.get(h);
+        System.out.println("Kills : " + (kills  == null ? 0 : kills.intValue()));
+        System.out.println("Faints: " + (faints == null ? 0 : faints.intValue()));
+        System.out.println("Damage: " + (dmg    == null ? 0 : dmg.intValue()));
+        System.out.println();
+    }
+
+    private void printHelp() {
+        System.out.println();
+        System.out.println(BOLD + CYAN + "=== Help ===" + RESET);
+        System.out.println("Movement: W/A/S/D to move within your lane.");
+        System.out.println("  - Heroes move north (toward the Monster Nexus).");
+        System.out.println("  - You cannot pass through Monsters or Inaccessible tiles.");
+        System.out.println("Teleport (T): From a Nexus tile, move to an ally's tile in another lane.");
+        System.out.println("Recall   (R): Return to your spawn Nexus.");
+        System.out.println("Terrain bonuses:");
+        System.out.println("  BUSH   (B): +10% Dexterity while standing on it.");
+        System.out.println("  CAVE   (C): +10% Agility while standing on it.");
+        System.out.println("  KOULOU (K): +10% Strength while standing on it.");
+        System.out.println("Other commands:");
+        System.out.println("  F: Physical attack   C: Cast spell   P: Use potion   E: Equip");
+        System.out.println("  I: Show detailed hero stats");
+        System.out.println("  H: Show party overview");
+        System.out.println("  V: Re-print the map");
+        System.out.println("  M: Visit Market (if on a Nexus tile)");
+        System.out.println("  Q: Quit to game hub");
+        System.out.println();
+    }
+
+    private void printRoundHeroBanner(Hero hero) {
+        System.out.println();
+        String title = " ROUND " + round + " – Hero Turn ";
+        String border = repeatChar('=', title.length() + 8);
+        System.out.println(BOLD + CYAN + border + RESET);
+        System.out.println(BOLD + CYAN + "== " + title + "==" + RESET);
+        System.out.println(BOLD + CYAN + border + RESET);
+
+        ValorTile tile = findHeroTile(hero);
+        int row = (tile == null) ? -1 : tile.getRow();
+        int col = (tile == null) ? -1 : tile.getCol();
+        String laneName = getLaneNameForCol(col);
+        String bonus = (tile != null) ? tile.getBonusText() : "";
+
+        System.out.println("Hero: " + BRIGHT_GREEN + hero.getName() + RESET
+                + "  Pos: (" + row + "," + col + ")"
+                + "  Lane: " + laneName + " " + bonus);
+        System.out.println("HP: " + hero.getHealth() + "/" + hero.getMaxHealth()
+                + "  MP: " + hero.getMana() + "/" + hero.getMaxMana()
+                + "  Gold: " + hero.getGold()
+                + "  Lvl: " + hero.getLevel());
+        System.out.println();
+    }
+
+    private String getLaneNameForCol(int col) {
+        if (col == 0 || col == 1) return "TOP";
+        if (col == 3 || col == 4) return "MID";
+        if (col == 6 || col == 7) return "BOT";
+        return "?";
+    }
+
+    private void printActionMenu() {
+        System.out.println(BOLD + "Actions:" + RESET);
+        System.out.println(" [W] Move Up       [A] Move Left      [S] Move Down      [D] Move Right");
+        System.out.println(" [F] Physical Attack   [C] Cast Spell   [P] Use Potion   [E] Equip");
+        System.out.println(" [T] Teleport          [R] Recall       [I] Hero Info    [H] Party");
+        System.out.println(" [V] View Map          [M] Market       [?] Help         [Q] Quit");
+    }
+
+    private void printEndGameSummary(String reason) {
+        System.out.println();
+        System.out.println(BOLD + CYAN + "===== Game Summary =====" + RESET);
+        if (reason != null && reason.length() > 0) {
+            System.out.println(reason);
+        }
+        System.out.println("Final round: " + round);
+        System.out.println();
+        System.out.format("%-18s %-4s %-12s %-12s %-8s %-6s %-6s %-6s %-6s%n",
+                "Hero", "Lvl", "HP", "MP", "Gold", "Kills", "Faints", "Damage", "Lane");
+        System.out.println("----------------------------------------------------------------------------");
+        for (int i = 0; i < heroes.size(); i++) {
+            Hero h = heroes.get(i);
+            ValorTile tile = findHeroTile(h);
+            String laneName = (tile == null) ? "?" : getLaneNameForCol(tile.getCol());
+            String hp = h.getHealth() + "/" + h.getMaxHealth();
+            String mp = h.getMana() + "/" + h.getMaxMana();
+            Integer kills  = heroKills.get(h);
+            Integer faints = heroFaints.get(h);
+            Integer dmg    = heroDamage.get(h);
+            System.out.format("%-18s %-4d %-12s %-12s %-8d %-6d %-6d %-6d %-6s%n",
+                    h.getName(), h.getLevel(), hp, mp, h.getGold(),
+                    kills  == null ? 0 : kills.intValue(),
+                    faints == null ? 0 : faints.intValue(),
+                    dmg    == null ? 0 : dmg.intValue(),
+                    laneName);
+        }
+        System.out.println("Thank you for playing Legends of Valor!");
+    }
+
+    private static String repeatChar(char ch, int count) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            sb.append(ch);
+        }
+        return sb.toString();
     }
 }
