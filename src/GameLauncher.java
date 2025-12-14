@@ -108,11 +108,11 @@ public class GameLauncher {
 
             // Build market using MarketFactory.Stock helper
             MarketFactory.Stock stock = marketFactory.loadAll(
-                    Paths.get("Data/Weapons.txt"),
+                    Paths.get("Data/Weaponry.txt"),
                     Paths.get("Data/Armory.txt"),
                     Paths.get("Data/Potions.txt"),
-                    Paths.get("Data/IceSpells.txt"),
                     Paths.get("Data/FireSpells.txt"),
+                    Paths.get("Data/IceSpells.txt"),
                     Paths.get("Data/LightningSpells.txt")
             );
 
