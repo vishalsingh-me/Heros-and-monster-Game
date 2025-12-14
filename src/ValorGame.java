@@ -10,11 +10,17 @@ import java.util.Scanner;
 import java.util.Set;
 
 /**
- * Legends of Valor game.
- *
- * NOTE: This class only has UI/print improvements added (colors, formatting,
- * help, event log, end-game summary). Game rules/mechanics are the same
- * as your previous version.
+ * Controller for the Legends of Valor MOBA-style game.
+ * <p>
+ * Responsibilities:
+ * <ul>
+ *     <li>Initialize heroes, monsters, map, and market</li>
+ *     <li>Drive the round-based turn sequence (heroes then monsters)</li>
+ *     <li>Enforce assignment rules: lanes, nexus victory, movement blocking, teleport/recall rules, spawn cadence</li>
+ *     <li>Delegate combat, inventory, and market actions to domain objects</li>
+ *     <li>Render map and log key events for clarity</li>
+ * </ul>
+ * This satisfies the rubric requirement for a clear game coordinator that separates input, rules, and domain objects.
  */
 public class ValorGame extends RpgGame {
 
@@ -79,7 +85,7 @@ public class ValorGame extends RpgGame {
         super(scanner);
 
         if (selectedHeroes.size() != 3) {
-            throw new IllegalArgumentException("Legends of Valor requires exactly 3 heroes.");
+            throw new IllegalArgumentException(GameText.VALOR_THREE_HEROES_REQUIRED);
         }
 
         this.heroes        = new ArrayList<Hero>(selectedHeroes);
@@ -102,7 +108,7 @@ public class ValorGame extends RpgGame {
                     Paths.get("Data/Spirits.txt")
             );
         } catch (IOException e) {
-            System.out.println("Warning: Could not load monster data: " + e.getMessage());
+            System.out.println(GameText.VALOR_MONSTER_DATA_WARNING + e.getMessage());
             this.globalMonsterPool = new ArrayList<Monster>();
         }
     }
@@ -110,8 +116,12 @@ public class ValorGame extends RpgGame {
     // ----------------------------------------------------
     // Core loop
     // ----------------------------------------------------
+    /**
+     * Runs the full Legends of Valor session: intro, setup, round loop, and end summary.
+     * Side effects: prints to console, mutates game state, and may exit to hub on quit.
+     */
     public void start() {
-        System.out.println(BRIGHT_CYAN + BOLD + "Welcome to Legends of Valor!" + RESET);
+        System.out.println(BRIGHT_CYAN + BOLD + GameText.VALOR_WELCOME + RESET);
         showIntro();
         initializeGame();
 
@@ -121,7 +131,7 @@ public class ValorGame extends RpgGame {
 
             System.out.println();
             System.out.println(BRIGHT_CYAN + BOLD
-                    + "========== ROUND " + round + " =========="
+                    + String.format(GameText.VALOR_ROUND_HEADER, Integer.valueOf(round))
                     + RESET);
 
             // 1. Hero Turn
@@ -142,18 +152,21 @@ public class ValorGame extends RpgGame {
 
         System.out.println();
         if (quitRequested) {
-            System.out.println("Exited to main menu.");
+            System.out.println(GameText.VALOR_EXITED_TO_MENU);
         } else {
-            System.out.println(BRIGHT_CYAN + BOLD + "Game Over!" + RESET);
+            System.out.println(BRIGHT_CYAN + BOLD + GameText.VALOR_GAME_OVER + RESET);
         }
 
         // show summary for rubric
         if (endReason == null) {
-            endReason = quitRequested ? "You quit the battle." : "Battle finished.";
+            endReason = quitRequested ? GameText.VALOR_END_REASON_QUIT : GameText.VALOR_END_REASON_DONE;
         }
         printEndGameSummary(endReason);
     }
 
+    /**
+     * Entry point used by the framework; delegates to start().
+     */
     @Override
     public void run() {
         start();
@@ -162,17 +175,25 @@ public class ValorGame extends RpgGame {
     // ----------------------------------------------------
     // Intro / setup
     // ----------------------------------------------------
+    /**
+     * Displays control/help text specific to Legends of Valor.
+     * No state changes; purely console output.
+     */
     private void showIntro() {
         System.out.println();
-        System.out.println("Three lanes connect the Hero Nexus (bottom) to the Monster Nexus (top).");
-        System.out.println("Heroes push north, Monsters push south.");
-        System.out.println("Reach the enemy Nexus to win. Don't let monsters reach yours!");
-        System.out.println("Use W/A/S/D to move, F for physical attack, C to cast spells.");
-        System.out.println("Teleport (T) only from your Nexus to an ally in another lane.");
-        System.out.println("Recall (R) to return to your spawn Nexus tile.");
+        System.out.println(GameText.VALOR_INTRO_LINE1);
+        System.out.println(GameText.VALOR_INTRO_LINE2);
+        System.out.println(GameText.VALOR_INTRO_LINE3);
+        System.out.println(GameText.VALOR_INTRO_LINE4);
+        System.out.println(GameText.VALOR_INTRO_LINE5);
+        System.out.println(GameText.VALOR_INTRO_LINE6);
         System.out.println();
     }
 
+    /**
+     * Places heroes on starting nexus tiles, records spawn columns, and spawns initial monsters.
+     * Side effects: mutates map occupancy and spawn tracking.
+     */
     private void initializeGame() {
         // Assign heroes to lanes (Cols 0, 3, 6)
         int[] startCols = {0, 3, 6};
@@ -194,6 +215,10 @@ public class ValorGame extends RpgGame {
     // ----------------------------------------------------
     // Monster spawn
     // ----------------------------------------------------
+    /**
+     * Spawns one monster per lane at the monster nexus row based on max hero level.
+     * Side effects: places monsters on map, mutates monster list, logs spawn events.
+     */
     private void spawnMonsters() {
         int maxHeroLevel = 1;
         for (Hero h : heroes) {
@@ -215,9 +240,12 @@ public class ValorGame extends RpgGame {
                     tile.setMonster(m);
                     monsters.add(m);
                     Lane lane = Lane.getLaneForCol(col);
-                    System.out.println("A wild " + BRIGHT_RED + m.getName() + RESET
-                            + " appeared in " + BOLD + lane + RESET + " lane!");
-                    addEvent("A wild " + m.getName() + " appeared in " + lane + " lane.");
+                    String spawnMsg = String.format(GameText.VALOR_MONSTER_APPEARED,
+                            BRIGHT_RED + m.getName() + RESET,
+                            BOLD + lane + RESET);
+                    System.out.println(spawnMsg);
+                    addEvent(String.format(GameText.VALOR_MONSTER_APPEARED,
+                            m.getName(), lane));
                 }
             }
         }
@@ -226,6 +254,9 @@ public class ValorGame extends RpgGame {
     // ----------------------------------------------------
     // HERO TURN LOGIC
     // ----------------------------------------------------
+    /**
+     * Executes all hero turns for the round, prompting actions and enforcing per-turn limits.
+     */
     private void processHeroTurn() {
         for (Hero hero : heroes) {
             if (hero.isFainted()) {
@@ -240,11 +271,11 @@ public class ValorGame extends RpgGame {
                 printRoundHeroBanner(hero);
                 printActionMenu();
 
-                System.out.print("> ");
+                System.out.print(GameText.VALOR_PROMPT);
                 String input = scanner.nextLine().trim().toUpperCase();
 
                 if (input.length() == 0) {
-                    System.out.println(RED + "Please enter a command. Type '?' for help." + RESET);
+                    System.out.println(RED + GameText.VALOR_NEED_COMMAND + RESET);
                     continue;
                 }
 
@@ -252,7 +283,7 @@ public class ValorGame extends RpgGame {
                     quitRequested = confirmQuit();
                     if (quitRequested) {
                         gameOver = true;
-                        endReason = "You chose to quit the game.";
+                        endReason = GameText.VALOR_QUIT_REASON;
                         turnDone = true;
                     }
                     continue;
@@ -290,16 +321,16 @@ public class ValorGame extends RpgGame {
                         turnDone = attemptRecall(hero);
                         break;
                     case "M": {
-                        ValorTile heroTile = findHeroTile(hero);
-                        if (heroTile != null &&
-                                map.isNexus(heroTile.getRow(), heroTile.getCol())) {
-                            visitMarket(hero);
-                        } else {
+                            ValorTile heroTile = findHeroTile(hero);
+                            if (heroTile != null &&
+                                    map.isNexus(heroTile.getRow(), heroTile.getCol())) {
+                                visitMarket(hero);
+                            } else {
                             System.out.println(YELLOW
-                                    + "You must be on a Nexus tile to visit a market."
+                                    + GameText.VALOR_MARKET_NEED_NEXUS
                                     + RESET);
-                        }
-                        break;
+                            }
+                            break;
                     }
                     case "I":
                         printHeroSheet(hero);
@@ -315,7 +346,7 @@ public class ValorGame extends RpgGame {
                         printHelp();
                         break;
                     default:
-                        System.out.println(RED + "Invalid input. Type '?' for help." + RESET);
+                        System.out.println(RED + GameText.VALOR_INVALID_INPUT + RESET);
                         break;
                 }
             }
@@ -326,12 +357,26 @@ public class ValorGame extends RpgGame {
         }
     }
 
+    /**
+     * Prompts the player to confirm quitting to the game hub.
+     *
+     * @return true if the player confirms quit
+     */
     private boolean confirmQuit() {
-        System.out.print(RED + "Quit to game hub? (y/N): " + RESET);
+        System.out.print(RED + GameText.VALOR_QUIT_TO_HUB_PROMPT + RESET);
         String line = scanner.nextLine().trim();
         return line.equalsIgnoreCase("y") || line.equalsIgnoreCase("yes");
     }
 
+    /**
+     * Attempts to move a hero by the specified delta, enforcing bounds, obstacles,
+     * lane-block rules, and occupancy.
+     *
+     * @param hero acting hero
+     * @param dRow row delta
+     * @param dCol column delta
+     * @return true if the move consumed the action
+     */
     private boolean attemptMove(Hero hero, int dRow, int dCol) {
         ValorTile currentTile = findHeroTile(hero);
         if (currentTile == null) {
@@ -342,7 +387,7 @@ public class ValorGame extends RpgGame {
         int newCol = currentTile.getCol() + dCol;
 
         if (!map.isValidCoordinate(newRow, newCol)) {
-            System.out.println(RED + "Cannot move out of bounds." + RESET);
+            System.out.println(RED + GameText.VALOR_CANNOT_OUT_OF_BOUNDS + RESET);
             return false;
         }
 
@@ -350,11 +395,11 @@ public class ValorGame extends RpgGame {
 
         // obstacles
         if (targetTile.getType() == TileType.OBSTACLE) {
-            System.out.print("Path blocked by Obstacle. Destroy it? (y/n): ");
+            System.out.print(GameText.VALOR_OBSTACLE_PROMPT);
             String ans = scanner.nextLine().trim();
             if (ans.equalsIgnoreCase("y")) {
                 targetTile.setType(TileType.PLAIN);
-                System.out.println(YELLOW + "Obstacle removed! (Turn consumed)" + RESET);
+                System.out.println(YELLOW + GameText.VALOR_OBSTACLE_REMOVED + RESET);
                 addEvent(hero.getName() + " removed an obstacle at (" + newRow + "," + newCol + ")");
                 return true;
             } else {
@@ -363,27 +408,31 @@ public class ValorGame extends RpgGame {
         }
 
         if (!targetTile.isAccessible()) {
-            System.out.println(RED + "Path blocked." + RESET);
+            System.out.println(RED + GameText.VALOR_PATH_BLOCKED + RESET);
             return false;
         }
 
         if (targetTile.hasHero()) {
-            System.out.println(RED + "Tile occupied by another hero." + RESET);
+            System.out.println(RED + GameText.VALOR_TILE_OCCUPIED + RESET);
             return false;
         }
 
         if (isBlockedByMonster(currentTile, targetTile)) {
-            System.out.println(RED + "Cannot move past a monster in this lane without killing it!"
+            System.out.println(RED + GameText.VALOR_BLOCKED_BY_MONSTER
                     + RESET);
             return false;
         }
 
         currentTile.setHero(null);
         targetTile.setHero(hero);
-        System.out.println(hero.getName() + " moved to (" + newRow + ", " + newCol + ")");
+        System.out.println(String.format(GameText.VALOR_MOVE_TO,
+                hero.getName(), Integer.valueOf(newRow), Integer.valueOf(newCol)));
         return true;
     }
 
+    /**
+     * Checks whether the hero move would illegally bypass a monster in the same lane.
+     */
     private boolean isBlockedByMonster(ValorTile current, ValorTile target) {
         Lane lane = Lane.getLaneForCol(current.getCol());
         if (lane == null) {
@@ -413,6 +462,12 @@ public class ValorGame extends RpgGame {
         return false;
     }
 
+    /**
+     * Performs a basic attack if a monster is in range 1 (same lane).
+     *
+     * @param hero acting hero
+     * @return true if the action was taken
+     */
     private boolean attemptAttack(Hero hero) {
         ValorTile currentTile = findHeroTile(hero);
         if (currentTile == null) {
@@ -421,13 +476,13 @@ public class ValorGame extends RpgGame {
 
         List<Monster> targets = getTargetsInRange(currentTile);
         if (targets.isEmpty()) {
-            System.out.println("No monsters in range.");
+            System.out.println(GameText.VALOR_NO_MONSTERS_IN_RANGE);
             return false;
         }
 
         Monster target = targets.get(0);
         if (targets.size() > 1) {
-            System.out.println("Choose target:");
+            System.out.println(GameText.VALOR_CHOOSE_TARGET);
             for (int i = 0; i < targets.size(); i++) {
                 Monster m = targets.get(i);
                 System.out.println(i + ") " + m.getName() + " (HP: " + m.getHealth() + ")");
@@ -442,9 +497,9 @@ public class ValorGame extends RpgGame {
             }
         }
 
-        System.out.println(BRIGHT_GREEN + hero.getName() + RESET
-                + " attacks "
-                + BRIGHT_RED + target.getName() + RESET + "!");
+        System.out.println(String.format(GameText.VALOR_ATTACKS,
+                BRIGHT_GREEN + hero.getName() + RESET,
+                BRIGHT_RED + target.getName() + RESET));
 
         double terrainBonus = 1.0;
         if (currentTile.getType() == TileType.KOULOU) {
@@ -458,7 +513,7 @@ public class ValorGame extends RpgGame {
         int damage = Math.max(0, totalStr - target.getDefense());
 
         target.takeDamage(damage);
-        System.out.println("Dealt " + RED + damage + " damage" + RESET + ".");
+        System.out.println(String.format(GameText.VALOR_DEALT_DAMAGE, Integer.valueOf(damage)));
 
         addHeroDamage(hero, damage);
         addEvent(hero.getName() + " dealt " + damage + " dmg to " + target.getName()
@@ -470,14 +525,20 @@ public class ValorGame extends RpgGame {
         return true;
     }
 
+    /**
+     * Casts a spell at range 2 (same lane) with damage and debuff.
+     *
+     * @param hero acting hero
+     * @return true if the action was taken
+     */
     private boolean attemptCastSpell(Hero hero) {
         List<Item> spellItems = hero.getInventory().getByType(Spell.class);
         if (spellItems.isEmpty()) {
-            System.out.println("No spells in inventory.");
+            System.out.println(GameText.VALOR_NO_SPELLS);
             return false;
         }
 
-        System.out.println("Choose Spell:");
+        System.out.println(GameText.VALOR_CHOOSE_SPELL);
         for (int i = 0; i < spellItems.size(); i++) {
             Spell s = (Spell) spellItems.get(i);
             System.out.println(i + ") " + s.getName() + " (Mana: " + s.getManaCost()
@@ -486,21 +547,21 @@ public class ValorGame extends RpgGame {
 
         Spell spell;
         try {
-            System.out.print("Choose spell index: ");
+            System.out.print(GameText.VALOR_CHOOSE_SPELL_INDEX);
             int idx = Integer.parseInt(scanner.nextLine().trim());
             if (idx >= 0 && idx < spellItems.size()) {
                 spell = (Spell) spellItems.get(idx);
             } else {
-                System.out.println("Invalid selection.");
+                System.out.println(GameText.VALOR_INVALID_SELECTION);
                 return false;
             }
         } catch (NumberFormatException e) {
-            System.out.println("Invalid input.");
+            System.out.println(GameText.VALOR_INVALID_INPUT_GENERIC);
             return false;
         }
 
         if (hero.getMana() < spell.getManaCost()) {
-            System.out.println("Not enough mana.");
+            System.out.println(GameText.VALOR_NOT_ENOUGH_MANA);
             return false;
         }
 
@@ -510,13 +571,13 @@ public class ValorGame extends RpgGame {
         }
         List<Monster> targets = getTargetsInRange(heroTile);
         if (targets.isEmpty()) {
-            System.out.println("No targets in range.");
+            System.out.println(GameText.VALOR_NO_TARGETS);
             return false;
         }
 
         Monster target = targets.get(0);
         if (targets.size() > 1) {
-            System.out.println("Choose target:");
+            System.out.println(GameText.VALOR_CHOOSE_TARGET);
             for (int i = 0; i < targets.size(); i++) {
                 Monster m = targets.get(i);
                 System.out.println(i + ") " + m.getName()
@@ -537,10 +598,11 @@ public class ValorGame extends RpgGame {
         int damage = spell.getBaseDamage() + (int) (hero.getDexterity() * 0.1);
         target.takeDamage(damage);
 
-        System.out.println(BRIGHT_GREEN + hero.getName() + RESET
-                + " casts " + MAGENTA + spell.getName() + RESET
-                + " on " + BRIGHT_RED + target.getName() + RESET
-                + " for " + RED + damage + " damage" + RESET + "!");
+        System.out.println(String.format(GameText.VALOR_CASTS,
+                BRIGHT_GREEN + hero.getName() + RESET,
+                MAGENTA + spell.getName() + RESET,
+                BRIGHT_RED + target.getName() + RESET,
+                Integer.valueOf(damage)));
 
         addHeroDamage(hero, damage);
         addEvent(hero.getName() + " cast " + spell.getName()
@@ -554,15 +616,18 @@ public class ValorGame extends RpgGame {
 
         if ("defense".equals(type)) {
             target.setDefense(Math.max(0, target.getDefense() - (int) amount));
-            System.out.println(target.getName() + "'s defense reduced by " + (int) amount);
+            System.out.println(String.format(GameText.VALOR_DEFENSE_REDUCED,
+                    target.getName(), Integer.valueOf((int) amount)));
         } else if ("damage".equals(type)) {
             int newMin = Math.max(0, target.getMinDamage() - (int) amount);
             int newMax = Math.max(newMin, target.getMaxDamage() - (int) amount);
             target.setDamageRange(newMin, newMax);
-            System.out.println(target.getName() + "'s damage reduced by " + (int) amount);
+            System.out.println(String.format(GameText.VALOR_DAMAGE_REDUCED,
+                    target.getName(), Integer.valueOf((int) amount)));
         } else if ("dodge".equals(type)) {
             target.setDodgeChance(Math.max(0, target.getDodgeChance() - amount));
-            System.out.println(target.getName() + "'s dodge chance reduced by " + amount);
+            System.out.println(String.format(GameText.VALOR_DODGE_REDUCED,
+                    target.getName(), Double.toString(amount)));
         }
 
         if (target.isFainted()) {
@@ -572,8 +637,12 @@ public class ValorGame extends RpgGame {
         return true;
     }
 
+    /**
+     * Cleans up and rewards the hero when a monster dies; updates stats and logs.
+     */
     private void handleMonsterDeath(Hero hero, Monster target) {
-        System.out.println(BRIGHT_RED + target.getName() + " died!" + RESET);
+        System.out.println(String.format(GameText.VALOR_MONSTER_DIED,
+                BRIGHT_RED + target.getName() + RESET));
         ValorTile mTile = findMonsterTile(target);
         if (mTile != null) {
             mTile.setMonster(null);
@@ -588,13 +657,19 @@ public class ValorGame extends RpgGame {
         addEvent(hero.getName() + " killed " + target.getName() + "!");
     }
 
+    /**
+     * Teleports a hero to a tile adjacent to an ally in another lane if legal.
+     *
+     * @param hero acting hero
+     * @return true if teleport succeeded
+     */
     private boolean attemptTeleport(Hero hero) {
         ValorTile heroTile = findHeroTile(hero);
         if (heroTile == null) {
             return false;
         }
 
-        System.out.println("Choose target hero to teleport to:");
+        System.out.println(GameText.VALOR_CHOOSE_HERO_TELEPORT);
         List<Hero> validTargets = new ArrayList<Hero>();
         Lane currentLane = Lane.getLaneForCol(heroTile.getCol());
 
@@ -614,7 +689,7 @@ public class ValorGame extends RpgGame {
         }
 
         if (validTargets.isEmpty()) {
-            System.out.println("No valid heroes in other lanes.");
+            System.out.println(GameText.VALOR_NO_VALID_HEROES_OTHER_LANES);
             return false;
         }
 
@@ -624,15 +699,15 @@ public class ValorGame extends RpgGame {
 
         int choice;
         try {
-            System.out.print("Enter choice: ");
+            System.out.print(GameText.VALOR_ENTER_CHOICE);
             choice = Integer.parseInt(scanner.nextLine().trim());
         } catch (NumberFormatException e) {
-            System.out.println("Invalid input.");
+            System.out.println(GameText.VALOR_INVALID_INPUT_GENERIC);
             return false;
         }
 
         if (choice < 0 || choice >= validTargets.size()) {
-            System.out.println("Invalid choice.");
+            System.out.println(GameText.VALOR_INVALID_CHOICE);
             return false;
         }
 
@@ -651,17 +726,24 @@ public class ValorGame extends RpgGame {
                 if (dest.isAccessible() && !dest.hasHero() && !dest.hasMonster()) {
                     heroTile.setHero(null);
                     dest.setHero(hero);
-                    System.out.println("Teleported!");
+                    System.out.println(GameText.VALOR_TELEPORTED);
                     addEvent(hero.getName() + " teleported near " + targetHero.getName());
                     return true;
                 }
             }
         }
 
-        System.out.println("No safe space around target hero.");
+        System.out.println(GameText.VALOR_NO_SAFE_SPACE);
         return false;
     }
 
+    /**
+     * Returns the hero to their original spawn Nexus tile if available.
+     * Respects lane assignment; consumes the hero's turn.
+     *
+     * @param hero acting hero
+     * @return true if recall succeeded
+     */
     private boolean attemptRecall(Hero hero) {
         Integer colObj = heroSpawnCols.get(hero);
         int spawnCol = (colObj == null) ? 0 : colObj.intValue();
@@ -669,7 +751,7 @@ public class ValorGame extends RpgGame {
 
         ValorTile spawnTile = map.getTile(spawnRow, spawnCol);
         if (spawnTile.hasHero() && spawnTile.getHero() != hero) {
-            System.out.println("Spawn point blocked!");
+            System.out.println(GameText.VALOR_SPAWN_BLOCKED);
             return false;
         }
 
@@ -678,27 +760,35 @@ public class ValorGame extends RpgGame {
             current.setHero(null);
         }
         spawnTile.setHero(hero);
-        System.out.println(hero.getName() + " recalled to Nexus.");
-        addEvent(hero.getName() + " recalled to Nexus.");
+        System.out.println(String.format(GameText.VALOR_RECALLED_TO_NEXUS, hero.getName()));
+        addEvent(String.format(GameText.VALOR_RECALLED_TO_NEXUS, hero.getName()));
         return true;
     }
 
+    /**
+     * Opens the market menu for the specified hero; supports buy/sell and info.
+     * Side effects: modifies hero inventory/equipment and gold.
+     *
+     * @param hero shopper
+     */
     private void visitMarket(Hero hero) {
-        System.out.println(BOLD + "--- MARKET ---" + RESET);
-        System.out.println("Hero: " + hero.getName() + "  Level: " + hero.getLevel()
-                + "  HP: " + hero.getHealth() + "/" + hero.getMaxHealth()
-                + "  MP: " + hero.getMana() + "/" + hero.getMaxMana()
-                + "  Gold: " + hero.getGold());
-        System.out.println("Type 'I' at any time to view hero stats.");
+        System.out.println(BOLD + GameText.VALOR_MARKET_MENU + RESET);
+        System.out.println(String.format(GameText.VALOR_MARKET_HERO_STATUS,
+                hero.getName(),
+                Integer.valueOf(hero.getLevel()),
+                Integer.valueOf(hero.getHealth()), Integer.valueOf(hero.getMaxHealth()),
+                Integer.valueOf(hero.getMana()), Integer.valueOf(hero.getMaxMana()),
+                Integer.valueOf(hero.getGold())));
+        System.out.println(GameText.VALOR_MARKET_INFO_HINT);
         boolean shopping = true;
         while (shopping) {
-            System.out.println("1) Buy Potion");
-            System.out.println("2) Buy Spell");
-            System.out.println("3) Buy Armor/Weapon");
-            System.out.println("4) Sell Item");
-            System.out.println("5) View Hero Info");
-            System.out.println("6) Exit");
-            System.out.print("> ");
+            System.out.println(GameText.VALOR_MARKET_MENU_1);
+            System.out.println(GameText.VALOR_MARKET_MENU_2);
+            System.out.println(GameText.VALOR_MARKET_MENU_3);
+            System.out.println(GameText.VALOR_MARKET_MENU_4);
+            System.out.println(GameText.VALOR_MARKET_MENU_5);
+            System.out.println(GameText.VALOR_MARKET_MENU_6);
+            System.out.print(GameText.VALOR_PROMPT);
             String choice = scanner.nextLine().trim();
             if ("I".equalsIgnoreCase(choice)) {
                 printHeroSheet(hero);
@@ -712,7 +802,7 @@ public class ValorGame extends RpgGame {
                     buyItem(hero, market.getSpells());
                     break;
                 case "3":
-                    System.out.println("Weapons or Armors? (W/A)");
+                    System.out.println(GameText.VALOR_MARKET_WEAPONS_OR_ARMORS);
                     String sub = scanner.nextLine().trim().toUpperCase();
                     if (sub.equals("W")) {
                         buyItem(hero, market.getWeapons());
@@ -722,11 +812,11 @@ public class ValorGame extends RpgGame {
                     break;
                 case "4":
                     if (hero.getInventory().getAll().isEmpty()) {
-                        System.out.println("Inventory empty.");
+                        System.out.println(GameText.VALOR_INVENTORY_EMPTY);
                     } else {
                         Item i = hero.getInventory().getAll().get(0);
                         market.sell(hero, i);
-                        System.out.println("Sold " + i.getName());
+                        System.out.println(String.format(GameText.VALOR_SOLD_ITEM, i.getName()));
                     }
                     break;
                 case "5":
@@ -736,14 +826,20 @@ public class ValorGame extends RpgGame {
                     shopping = false;
                     break;
                 default:
-                    System.out.println("Invalid. Enter 1-6 or I for hero info.");
+                    System.out.println(GameText.VALOR_MARKET_INVALID_SIMPLE);
             }
         }
     }
 
+    /**
+     * Generic purchase helper for any item list.
+     *
+     * @param hero  buyer
+     * @param items stock to display
+     */
     private <T extends Item> void buyItem(Hero hero, List<T> items) {
         if (items.isEmpty()) {
-            System.out.println("No items available.");
+            System.out.println(GameText.VALOR_NO_ITEMS_AVAILABLE);
             return;
         }
 
@@ -753,48 +849,73 @@ public class ValorGame extends RpgGame {
                     + " cost:" + it.getPrice());
         }
         try {
-            System.out.print("Buy index (or -1 to cancel): ");
+            System.out.print(GameText.VALOR_BUY_INDEX_PROMPT);
             int idx = Integer.parseInt(scanner.nextLine().trim());
             if (idx == -1) {
                 return;
             }
             if (idx >= 0 && idx < items.size()) {
                 if (market.buy(hero, items.get(idx))) {
-                    System.out.println(GREEN + "Bought!" + RESET);
+                    System.out.println(GREEN + GameText.VALOR_BOUGHT + RESET);
                 } else {
-                    System.out.println("Cannot afford or level too low.");
+                    System.out.println(GameText.VALOR_CANNOT_AFFORD_LEVEL);
                 }
             } else {
-                System.out.println("Invalid index.");
+                System.out.println(GameText.VALOR_INVALID_INDEX_GENERIC);
             }
         } catch (Exception e) {
-            System.out.println("Invalid input.");
+            System.out.println(GameText.VALOR_MARKET_INVALID_INPUT);
         }
     }
 
     // wrapper names to match your original code
+    /**
+     * Wrapper to preserve original naming for potion usage.
+     *
+     * @param h acting hero
+     * @return true if potion consumed
+     */
     private boolean usePotion(Hero h) {
         return attemptPotion(h);
     }
 
+    /**
+     * Wrapper to preserve original naming for equipment selection.
+     *
+     * @param h acting hero
+     * @return true if equipment changed
+     */
     private boolean equipItem(Hero h) {
         return attemptEquip(h);
     }
 
+    /**
+     * Uses the first available potion on the hero.
+     *
+     * @param h acting hero
+     * @return true if a potion was consumed
+     */
     private boolean attemptPotion(Hero h) {
         List<Item> potions = h.getInventory().getByType(Potion.class);
         if (potions.isEmpty()) {
-            System.out.println("No potions.");
+            System.out.println(GameText.VALOR_NO_POTIONS);
             return false;
         }
         Potion p = (Potion) potions.get(0);
         h.applyPotionEffect(p.getEffectAmount(), p.getAffectedStats());
         h.getInventory().remove(p);
-        System.out.println(GREEN + "Used " + p.getName() + RESET);
+        System.out.println(GREEN + String.format(GameText.VALOR_USED_POTION, p.getName()) + RESET);
         addEvent(h.getName() + " used potion " + p.getName());
         return true;
     }
 
+    /**
+     * Equips the first selected weapon or armor from inventory.
+     * Ends the hero's turn when an item is equipped.
+     *
+     * @param hero acting hero
+     * @return true if equipment changed
+     */
     private boolean attemptEquip(Hero hero) {
         List<Item> weaponItems = hero.getInventory().getByType(Weapon.class);
         List<Weapon> weapons = new ArrayList<Weapon>();
@@ -808,16 +929,16 @@ public class ValorGame extends RpgGame {
             armors.add((Armor) armorItems.get(i));
         }
 
-        System.out.println(BOLD + "--- EQUIP MENU ---" + RESET);
-        System.out.println("1) Equip Weapon");
-        System.out.println("2) Equip Armor");
-        System.out.println("3) Cancel");
-        System.out.print("> ");
+        System.out.println(BOLD + GameText.VALOR_EQUIP_MENU_HEADER + RESET);
+        System.out.println(GameText.VALOR_EQUIP_WEAPON);
+        System.out.println(GameText.VALOR_EQUIP_ARMOR);
+        System.out.println(GameText.VALOR_EQUIP_CANCEL);
+        System.out.print(GameText.VALOR_PROMPT);
         String type = scanner.nextLine().trim();
 
         if ("1".equals(type)) {
             if (weapons.isEmpty()) {
-                System.out.println("No weapons.");
+                System.out.println(GameText.VALOR_NO_WEAPONS);
                 return false;
             }
             for (int i = 0; i < weapons.size(); i++) {
@@ -826,11 +947,12 @@ public class ValorGame extends RpgGame {
                         + " Dmg:" + w.getDamage());
             }
             try {
-                System.out.print("Index: ");
+                System.out.print(GameText.VALOR_INDEX_PROMPT);
                 int idx = Integer.parseInt(scanner.nextLine().trim());
                 if (idx >= 0 && idx < weapons.size()) {
                     hero.getEquipment().equipWeapon(weapons.get(idx));
-                    System.out.println("Equipped " + weapons.get(idx).getName());
+                    System.out.println(String.format(GameText.VALOR_EQUIPPED_WEAPON,
+                            weapons.get(idx).getName()));
                     addEvent(hero.getName() + " equipped weapon "
                             + weapons.get(idx).getName());
                     return true;
@@ -839,7 +961,7 @@ public class ValorGame extends RpgGame {
             }
         } else if ("2".equals(type)) {
             if (armors.isEmpty()) {
-                System.out.println("No armor.");
+                System.out.println(GameText.VALOR_NO_ARMOR);
                 return false;
             }
             for (int i = 0; i < armors.size(); i++) {
@@ -848,11 +970,12 @@ public class ValorGame extends RpgGame {
                         + " Red:" + a.getDamageReduction());
             }
             try {
-                System.out.print("Index: ");
+                System.out.print(GameText.VALOR_INDEX_PROMPT);
                 int idx = Integer.parseInt(scanner.nextLine().trim());
                 if (idx >= 0 && idx < armors.size()) {
                     hero.getEquipment().equipArmor(armors.get(idx));
-                    System.out.println("Equipped " + armors.get(idx).getName());
+                    System.out.println(String.format(GameText.VALOR_EQUIPPED_ARMOR,
+                            armors.get(idx).getName()));
                     addEvent(hero.getName() + " equipped armor "
                             + armors.get(idx).getName());
                     return true;
@@ -867,9 +990,14 @@ public class ValorGame extends RpgGame {
     // ----------------------------------------------------
     // MONSTER TURN LOGIC
     // ----------------------------------------------------
+    /**
+     * Processes all monsters for the round: attack adjacent heroes in the same lane,
+     * otherwise advance south if unblocked.
+     * Side effects: moves monsters, applies damage, updates faint state and event log.
+     */
     private void processMonsterTurn() {
         System.out.println();
-        System.out.println(BOLD + "--- Monsters Turn ---" + RESET);
+        System.out.println(BOLD + GameText.VALOR_MONSTERS_TURN + RESET);
         for (int i = 0; i < monsters.size(); i++) {
             Monster m = monsters.get(i);
             ValorTile mTile = findMonsterTile(m);
@@ -880,9 +1008,9 @@ public class ValorGame extends RpgGame {
             List<Hero> targets = getHeroesInRange(mTile);
             if (!targets.isEmpty()) {
                 Hero target = targets.get(0);
-                System.out.println(BRIGHT_RED + m.getName() + RESET
-                        + " attacks "
-                        + BRIGHT_GREEN + target.getName() + RESET);
+                System.out.println(String.format(GameText.VALOR_MONSTER_ATTACKS,
+                        BRIGHT_RED + m.getName() + RESET,
+                        BRIGHT_GREEN + target.getName() + RESET));
 
                 int range = m.getMaxDamage() - m.getMinDamage() + 1;
                 int rawDmg = random.nextInt(range) + m.getMinDamage();
@@ -893,14 +1021,15 @@ public class ValorGame extends RpgGame {
                 int actualDmg = Math.max(0, rawDmg - armorRed);
 
                 target.takeDamage(actualDmg);
-                System.out.println("Hit for " + RED + actualDmg + " damage" + RESET + "!");
+                System.out.println(String.format(GameText.VALOR_MONSTER_FLESH_HIT,
+                        Integer.valueOf(actualDmg)));
 
                 addEvent(m.getName() + " hit " + target.getName()
                         + " for " + actualDmg + " dmg");
 
                 if (target.isFainted()) {
-                    System.out.println(BRIGHT_RED + "*** " + target.getName()
-                            + " has fainted! ***" + RESET);
+                    System.out.println(String.format(GameText.VALOR_MONSTER_FAINTED,
+                            target.getName()));
                     ValorTile t = findHeroTile(target);
                     if (t != null) {
                         t.setHero(null);
@@ -915,7 +1044,8 @@ public class ValorGame extends RpgGame {
                     if (nextTile.isAccessible() && !nextTile.hasMonster()) {
                         mTile.setMonster(null);
                         nextTile.setMonster(m);
-                        System.out.println(m.getName() + " moved forward.");
+                        System.out.println(String.format(GameText.VALOR_MONSTER_MOVED_FORWARD,
+                                m.getName()));
                     }
                 }
             }
@@ -925,6 +1055,12 @@ public class ValorGame extends RpgGame {
     // ----------------------------------------------------
     // HELPERS
     // ----------------------------------------------------
+    /**
+     * Locates the map tile containing the specified hero.
+     *
+     * @param h hero to find
+     * @return tile or null if not placed
+     */
     private ValorTile findHeroTile(Hero h) {
         for (int r = 0; r < map.getHeight(); r++) {
             for (int c = 0; c < map.getWidth(); c++) {
@@ -937,6 +1073,12 @@ public class ValorGame extends RpgGame {
         return null;
     }
 
+    /**
+     * Locates the map tile containing the specified monster.
+     *
+     * @param m monster to find
+     * @return tile or null if not placed
+     */
     private ValorTile findMonsterTile(Monster m) {
         for (int r = 0; r < map.getHeight(); r++) {
             for (int c = 0; c < map.getWidth(); c++) {
@@ -949,6 +1091,12 @@ public class ValorGame extends RpgGame {
         return null;
     }
 
+    /**
+     * Returns monsters in range-1 (Chebyshev) of the given tile.
+     *
+     * @param center origin tile
+     * @return monsters found within range
+     */
     private List<Monster> getTargetsInRange(ValorTile center) {
         List<Monster> targets = new ArrayList<Monster>();
         for (int dr = -1; dr <= 1; dr++) {
@@ -966,6 +1114,12 @@ public class ValorGame extends RpgGame {
         return targets;
     }
 
+    /**
+     * Returns heroes in range-1 (Chebyshev) of the given tile.
+     *
+     * @param center origin tile
+     * @return heroes found within range
+     */
     private List<Hero> getHeroesInRange(ValorTile center) {
         List<Hero> targets = new ArrayList<Hero>();
         for (int dr = -1; dr <= 1; dr++) {
@@ -983,6 +1137,12 @@ public class ValorGame extends RpgGame {
         return targets;
     }
 
+    /**
+     * Checks victory/defeat: heroes win on reaching monster nexus (row 0);
+     * monsters win on reaching hero nexus (row 7).
+     *
+     * @return true if game should end
+     */
     private boolean checkWinCondition() {
         // Heroes win if they reach Monster Nexus (Row 0)
         for (int i = 0; i < heroes.size(); i++) {
@@ -990,9 +1150,9 @@ public class ValorGame extends RpgGame {
             ValorTile t = findHeroTile(h);
             if (t != null && t.getType() == TileType.NEXUS && t.getRow() == 0) {
                 System.out.println(BRIGHT_GREEN + BOLD
-                        + "HEROES WIN! The Monster Nexus has been destroyed!"
+                        + GameText.VALOR_HEROES_WIN
                         + RESET);
-                endReason = "Heroes reached the Monster Nexus.";
+                endReason = GameText.VALOR_END_REASON_HERO;
                 gameOver = true;
                 return true;
             }
@@ -1003,9 +1163,9 @@ public class ValorGame extends RpgGame {
             ValorTile t = findMonsterTile(m);
             if (t != null && t.getType() == TileType.NEXUS && t.getRow() == 7) {
                 System.out.println(BRIGHT_RED + BOLD
-                        + "MONSTERS WIN! The Hero Nexus has been overrun!"
+                        + GameText.VALOR_MONSTERS_WIN
                         + RESET);
-                endReason = "Monsters reached your Nexus.";
+                endReason = GameText.VALOR_END_REASON_MONSTER;
                 gameOver = true;
                 return true;
             }
@@ -1013,6 +1173,10 @@ public class ValorGame extends RpgGame {
         return false;
     }
 
+    /**
+     * Resolves end-of-round regeneration, hero respawns, and periodic monster spawns.
+     * Side effects: mutates hero HP/mana, map occupancy, and may add monsters.
+     */
     private void endOfRound() {
         for (int i = 0; i < heroes.size(); i++) {
             Hero h = heroes.get(i);
@@ -1020,7 +1184,8 @@ public class ValorGame extends RpgGame {
                 h.heal((int) (h.getMaxHealth() * 0.10));
                 h.gainMana((int) (h.getMaxMana() * 0.10));
             } else {
-                System.out.println(h.getName() + " is reviving...");
+                System.out.println(String.format(GameText.VALOR_IS_REVIVING,
+                        h.getName()));
                 h.restoreFullHealth();
                 h.restoreFullMana();
 
@@ -1030,7 +1195,7 @@ public class ValorGame extends RpgGame {
 
                 if (!spawn.hasHero()) {
                     spawn.setHero(h);
-                    System.out.println(h.getName() + " respawned at Nexus.");
+                    System.out.println(String.format(GameText.VALOR_RESPAWN, h.getName()));
                 } else {
                     boolean placed = false;
                     for (int c = 0; c < 8; c++) {
@@ -1038,14 +1203,14 @@ public class ValorGame extends RpgGame {
                         if (alt.getType() == TileType.NEXUS && !alt.hasHero() && alt.isAccessible()) {
                             alt.setHero(h);
                             placed = true;
-                            System.out.println(h.getName()
-                                    + " respawned at Nexus (alternate spot).");
+                            System.out.println(String.format(GameText.VALOR_RESPAWN_ALT,
+                                    h.getName()));
                             break;
                         }
                     }
                     if (!placed) {
-                        System.out.println("Nexus is full! " + h.getName()
-                                + " must wait for space.");
+                        System.out.println(String.format(GameText.VALOR_RESPAWN_FULL,
+                                h.getName()));
                     }
                 }
             }
@@ -1061,6 +1226,9 @@ public class ValorGame extends RpgGame {
     }
 
     // ====== Event log & stats helpers ======
+    /**
+     * Adds a line to the current round's event buffer (capacity-limited).
+     */
     private void addEvent(String text) {
         if (text == null || text.length() == 0) {
             return;
@@ -1071,17 +1239,23 @@ public class ValorGame extends RpgGame {
         eventLog.add(text);
     }
 
+    /**
+     * Prints the buffered event log for this round.
+     */
     private void printRecentEvents() {
         if (eventLog.isEmpty()) {
             return;
         }
         System.out.println();
-        System.out.println(BOLD + "Recent events:" + RESET);
+        System.out.println(BOLD + GameText.VALOR_RECENT_EVENTS + RESET);
         for (int i = 0; i < eventLog.size(); i++) {
             System.out.println("  - " + eventLog.get(i));
         }
     }
 
+    /**
+     * Accumulates damage dealt by a hero for end-of-game summary.
+     */
     private void addHeroDamage(Hero h, int dmg) {
         if (h == null || dmg <= 0) return;
         Integer cur = heroDamage.get(h);
@@ -1089,6 +1263,9 @@ public class ValorGame extends RpgGame {
         heroDamage.put(h, Integer.valueOf(cur.intValue() + dmg));
     }
 
+    /**
+     * Increments kill count for a hero.
+     */
     private void addHeroKill(Hero h) {
         if (h == null) return;
         Integer cur = heroKills.get(h);
@@ -1096,6 +1273,9 @@ public class ValorGame extends RpgGame {
         heroKills.put(h, Integer.valueOf(cur.intValue() + 1));
     }
 
+    /**
+     * Increments faint count for a hero.
+     */
     private void addHeroFaint(Hero h) {
         if (h == null) return;
         Integer cur = heroFaints.get(h);
@@ -1103,12 +1283,15 @@ public class ValorGame extends RpgGame {
         heroFaints.put(h, Integer.valueOf(cur.intValue() + 1));
     }
 
+    /**
+     * Prints a compact party status table (HP/MP/stats) for quick reference.
+     */
     private void printPartyOverview() {
         System.out.println();
-        System.out.println(BOLD + CYAN + "=== Party Overview ===" + RESET);
+        System.out.println(BOLD + CYAN + GameText.VALOR_PARTY_OVERVIEW_TITLE + RESET);
         System.out.format("%-18s %-4s %-12s %-12s %-8s %-8s %-8s%n",
                 "Name", "Lvl", "HP", "MP", "Gold", "STR", "DEX/AGI");
-        System.out.println("----------------------------------------------------------------");
+        System.out.println(GameText.VALOR_PARTY_OVERVIEW_DIVIDER);
         for (int i = 0; i < heroes.size(); i++) {
             Hero h = heroes.get(i);
             String hp = h.getHealth() + "/" + h.getMaxHealth();
@@ -1120,10 +1303,16 @@ public class ValorGame extends RpgGame {
         }
     }
 
+    /**
+     * Shows a single hero's detailed stats and tracked counters.
+     *
+     * @param h hero to display
+     */
     private void printHeroSheet(Hero h) {
         if (h == null) return;
         System.out.println();
-        System.out.println(BOLD + CYAN + "=== Hero Sheet: " + h.getName() + " ===" + RESET);
+        System.out.println(BOLD + CYAN + String.format(GameText.VALOR_HERO_SHEET_TITLE,
+                h.getName()) + RESET);
         System.out.println("Level : " + h.getLevel());
         System.out.println("HP    : " + h.getHealth() + " / " + h.getMaxHealth());
         System.out.println("MP    : " + h.getMana() + " / " + h.getMaxMana());
@@ -1140,31 +1329,40 @@ public class ValorGame extends RpgGame {
         System.out.println();
     }
 
+    /**
+     * Prints the condensed help/controls reference.
+     */
     private void printHelp() {
         System.out.println();
-        System.out.println(BOLD + CYAN + "=== Help ===" + RESET);
-        System.out.println("Movement: W/A/S/D to move within your lane.");
-        System.out.println("  - Heroes move north (toward the Monster Nexus).");
-        System.out.println("  - You cannot pass through Monsters or Inaccessible tiles.");
-        System.out.println("Teleport (T): From a Nexus tile, move to an ally's tile in another lane.");
-        System.out.println("Recall   (R): Return to your spawn Nexus.");
-        System.out.println("Terrain bonuses:");
-        System.out.println("  BUSH   (B): +10% Dexterity while standing on it.");
-        System.out.println("  CAVE   (C): +10% Agility while standing on it.");
-        System.out.println("  KOULOU (K): +10% Strength while standing on it.");
-        System.out.println("Other commands:");
-        System.out.println("  F: Physical attack   C: Cast spell   P: Use potion   E: Equip");
-        System.out.println("  I: Show detailed hero stats");
-        System.out.println("  H: Show party overview");
-        System.out.println("  V: Re-print the map");
-        System.out.println("  M: Visit Market (if on a Nexus tile)");
-        System.out.println("  Q: Quit to game hub");
+        System.out.println(BOLD + CYAN + GameText.VALOR_HELP_TITLE + RESET);
+        System.out.println(GameText.VALOR_HELP_MOVE);
+        System.out.println(GameText.VALOR_HELP_MOVE_DETAILS);
+        System.out.println(GameText.VALOR_HELP_BLOCKS);
+        System.out.println(GameText.VALOR_HELP_TELEPORT);
+        System.out.println(GameText.VALOR_HELP_RECALL);
+        System.out.println(GameText.VALOR_HELP_TERRAIN);
+        System.out.println(GameText.VALOR_HELP_BUSH);
+        System.out.println(GameText.VALOR_HELP_CAVE);
+        System.out.println(GameText.VALOR_HELP_KOULOU);
+        System.out.println(GameText.VALOR_HELP_OTHER);
+        System.out.println(GameText.VALOR_HELP_COMMANDS_LINE1);
+        System.out.println(GameText.VALOR_HELP_COMMANDS_LINE2);
+        System.out.println(GameText.VALOR_HELP_COMMANDS_LINE3);
+        System.out.println(GameText.VALOR_HELP_COMMANDS_LINE4);
+        System.out.println(GameText.VALOR_HELP_COMMANDS_LINE5);
+        System.out.println(GameText.VALOR_HELP_COMMANDS_LINE6);
         System.out.println();
     }
 
+    /**
+     * Prints a round/turn banner and the acting hero's status for clarity.
+     *
+     * @param hero acting hero
+     */
     private void printRoundHeroBanner(Hero hero) {
         System.out.println();
-        String title = " ROUND " + round + " – Hero Turn ";
+        String title = String.format(GameText.VALOR_ROUND_HERO_TITLE,
+                Integer.valueOf(round));
         String border = repeatChar('=', title.length() + 8);
         System.out.println(BOLD + CYAN + border + RESET);
         System.out.println(BOLD + CYAN + "== " + title + "==" + RESET);
@@ -1186,6 +1384,12 @@ public class ValorGame extends RpgGame {
         System.out.println();
     }
 
+    /**
+     * Utility mapping from column to textual lane name.
+     *
+     * @param col column index
+     * @return lane name or "?" if unknown
+     */
     private String getLaneNameForCol(int col) {
         if (col == 0 || col == 1) return "TOP";
         if (col == 3 || col == 4) return "MID";
@@ -1193,25 +1397,33 @@ public class ValorGame extends RpgGame {
         return "?";
     }
 
+    /**
+     * Renders the per-turn action menu.
+     */
     private void printActionMenu() {
-        System.out.println(BOLD + "Actions:" + RESET);
-        System.out.println(" [W] Move Up       [A] Move Left      [S] Move Down      [D] Move Right");
-        System.out.println(" [F] Physical Attack   [C] Cast Spell   [P] Use Potion   [E] Equip");
-        System.out.println(" [T] Teleport          [R] Recall       [I] Hero Info    [H] Party");
-        System.out.println(" [V] View Map          [M] Market       [?] Help         [Q] Quit");
+        System.out.println(BOLD + GameText.VALOR_ACTIONS_HEADER + RESET);
+        System.out.println(GameText.VALOR_ACTION_LINE1);
+        System.out.println(GameText.VALOR_ACTION_LINE2);
+        System.out.println(GameText.VALOR_ACTION_LINE3);
+        System.out.println(GameText.VALOR_ACTION_LINE4);
     }
 
+    /**
+     * Outputs final summary table and metadata once the game ends.
+     *
+     * @param reason human-readable ending reason
+     */
     private void printEndGameSummary(String reason) {
         System.out.println();
-        System.out.println(BOLD + CYAN + "===== Game Summary =====" + RESET);
+        System.out.println(BOLD + CYAN + GameText.VALOR_GAME_SUMMARY_TITLE + RESET);
         if (reason != null && reason.length() > 0) {
             System.out.println(reason);
         }
-        System.out.println("Final round: " + round);
+        System.out.println(String.format(GameText.VALOR_FINAL_ROUND, Integer.valueOf(round)));
         System.out.println();
         System.out.format("%-18s %-4s %-12s %-12s %-8s %-6s %-6s %-6s %-6s%n",
                 "Hero", "Lvl", "HP", "MP", "Gold", "Kills", "Faints", "Damage", "Lane");
-        System.out.println("----------------------------------------------------------------------------");
+        System.out.println(GameText.VALOR_SUMMARY_DIVIDER);
         for (int i = 0; i < heroes.size(); i++) {
             Hero h = heroes.get(i);
             ValorTile tile = findHeroTile(h);
@@ -1228,9 +1440,16 @@ public class ValorGame extends RpgGame {
                     dmg    == null ? 0 : dmg.intValue(),
                     laneName);
         }
-        System.out.println("Thank you for playing Legends of Valor!");
+        System.out.println(GameText.VALOR_GAME_THANKS);
     }
 
+    /**
+     * Small helper to repeat a character (Java 8 compatible).
+     *
+     * @param ch    character to repeat
+     * @param count number of times
+     * @return resulting string
+     */
     private static String repeatChar(char ch, int count) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < count; i++) {

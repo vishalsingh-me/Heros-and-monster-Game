@@ -49,20 +49,20 @@ public class LegendsGame extends RpgGame {
     }
 
     private void printIntro() {
-        System.out.println("====================================");
-        System.out.println("   LEGENDS: MONSTERS AND HEROES");
-        System.out.println("====================================");
-        System.out.println("Welcome! Build a team of heroes, explore the map, visit markets, and battle monsters.");
+        System.out.println(GameText.LEGENDS_BORDER);
+        System.out.println(GameText.LEGENDS_TITLE);
+        System.out.println(GameText.LEGENDS_BORDER);
+        System.out.println(GameText.LEGENDS_WELCOME);
         System.out.println();
-        System.out.println("How to play:");
-        System.out.println(" - Move: W/A/S/D");
-        System.out.println(" - Map:  M (view map)");
-        System.out.println(" - Inventory: I (view what you carry)");
-        System.out.println(" - Market: Step on M tiles to shop (list, buy, sell, b to exit)");
-        System.out.println(" - Battles: Choose actions (Attack/Spell/Potion/Equip/Skip), then target by index");
-        System.out.println(" - Quit: Q (with confirmation)");
+        System.out.println(GameText.LEGENDS_HOW_TO_PLAY);
+        System.out.println(GameText.LEGENDS_MOVE);
+        System.out.println(GameText.LEGENDS_MAP);
+        System.out.println(GameText.LEGENDS_INVENTORY);
+        System.out.println(GameText.LEGENDS_MARKET);
+        System.out.println(GameText.LEGENDS_BATTLES);
+        System.out.println(GameText.LEGENDS_QUIT);
         System.out.println();
-        System.out.println("Press Enter to continue...");
+        System.out.println(GameText.LEGENDS_PRESS_ENTER);
         new java.util.Scanner(System.in).nextLine();
     }
 
@@ -91,14 +91,14 @@ public class LegendsGame extends RpgGame {
     private void selectHeroes() {
         Scanner scanner = new Scanner(System.in);
         List<Hero> chosen = new ArrayList<>();
-        System.out.println("Choose 1-3 heroes by index:");
+        System.out.println(GameText.LEGENDS_CHOOSE_HEROES);
         for (int i = 0; i < heroTemplates.size(); i++) {
             Hero h = heroTemplates.get(i);
             System.out.printf("%d) %s (Lvl %d) STR:%d DEX:%d AGI:%d%n", i, h.getName(), h.getLevel(),
                     h.getStrength(), h.getDexterity(), h.getAgility());
         }
         while (chosen.size() < 3) {
-            System.out.print("Enter index (or blank to finish): ");
+            System.out.print(GameText.LEGENDS_ENTER_INDEX);
             String line = scanner.nextLine().trim();
             if (line.isEmpty()) {
                 break;
@@ -108,12 +108,12 @@ public class LegendsGame extends RpgGame {
                 if (idx >= 0 && idx < heroTemplates.size()) {
                     Hero template = heroTemplates.get(idx);
                     chosen.add(cloneHero(template));
-                    System.out.println(template.getName() + " added.");
+                    System.out.println(template.getName() + GameText.HERO_ADDED_SUFFIX);
                 } else {
-                    System.out.println("Invalid index.");
+                    System.out.println(GameText.LEGENDS_INVALID_INDEX);
                 }
             } catch (NumberFormatException e) {
-                System.out.println("Please enter a number.");
+                System.out.println(GameText.LEGENDS_ENTER_NUMBER);
             }
         }
         if (chosen.isEmpty()) {
@@ -147,12 +147,12 @@ public class LegendsGame extends RpgGame {
 
     private void gameLoop() {
         Scanner scanner = new Scanner(System.in);
-        System.out.println("Game start! Use W/A/S/D to move, Q to quit, M to view map.");
-        System.out.println("Use W/A/S/D to move around the world.");
+        System.out.println(GameText.LEGENDS_GAME_START);
+        System.out.println(GameText.LEGENDS_MOVE_AGAIN);
         map.render();
         boolean running = true;
         while (running) {
-            System.out.print("> ");
+            System.out.print(GameText.LEGENDS_PROMPT);
             String input = scanner.nextLine().trim().toLowerCase();
             switch (state) {
                 case EXPLORING:
@@ -176,7 +176,7 @@ public class LegendsGame extends RpgGame {
                         case "i":
                             state = GameState.INVENTORY;
                             showInventory();
-                            System.out.println("Inventory opened. Press B to go back.");
+                            System.out.println(GameText.LEGENDS_INVENTORY_OPENED);
                             break;
                         case "q":
                             System.out.print("Are you sure? (y/n): ");
@@ -186,7 +186,7 @@ public class LegendsGame extends RpgGame {
                             }
                             break;
                         default:
-                            System.out.println("Commands: W/A/S/D move, M map, I inventory, Q quit");
+                            System.out.println(GameText.LEGENDS_COMMANDS);
                             break;
                     }
                     break;
@@ -194,7 +194,7 @@ public class LegendsGame extends RpgGame {
                     if (input.equals("b") || input.equals("q")) {
                         state = GameState.EXPLORING;
                     } else {
-                        System.out.println("Map view. Press B to return to exploring.");
+                        System.out.println(GameText.LEGENDS_MAP_VIEW);
                     }
                     break;
                 case MARKET:
@@ -210,7 +210,7 @@ public class LegendsGame extends RpgGame {
                         state = GameState.EXPLORING;
                     } else {
                         showInventory();
-                        System.out.println("Press B to return to exploring.");
+                        System.out.println(GameText.LEGENDS_MAP_VIEW);
                     }
                     break;
                 case BATTLE:
@@ -218,20 +218,20 @@ public class LegendsGame extends RpgGame {
                     break;
             }
         }
-        System.out.println("Goodbye!");
+        System.out.println(GameText.LEGENDS_GOODBYE);
     }
 
     private void attemptMove(int dRow, int dCol) {
         if (!map.move(dRow, dCol)) {
-            System.out.println("Cannot move there.");
+            System.out.println(GameText.LEGENDS_CANNOT_MOVE);
             return;
         }
         map.render();
-        System.out.printf("Moved to (%d, %d).%n", map.getHeroRow(), map.getHeroCol());
+        System.out.printf(GameText.LEGENDS_MOVED_TO, map.getHeroRow(), map.getHeroCol());
         Tile tile = map.getCurrentTile();
         if (tile instanceof MarketTile) {
             MarketTile marketTile = (MarketTile) tile;
-            System.out.println("Entered Market.");
+            System.out.println(GameText.LEGENDS_ENTERED_MARKET);
             state = GameState.MARKET;
             enterMarket(marketTile.getMarket());
         } else if (tile instanceof CommonTile) {
@@ -244,9 +244,9 @@ public class LegendsGame extends RpgGame {
     private void enterMarket(Market market) {
         Scanner scanner = new Scanner(System.in);
         boolean shopping = true;
-        System.out.println("Entered Market. Commands: list, buy, sell, b (back)");
+        System.out.println(GameText.LEGENDS_MARKET_COMMANDS);
         while (shopping) {
-            System.out.print("Market> ");
+            System.out.print(GameText.LEGENDS_MARKET_PROMPT);
             String cmd = scanner.nextLine().trim().toLowerCase();
             switch (cmd) {
                 case "list":
@@ -264,32 +264,32 @@ public class LegendsGame extends RpgGame {
                     state = GameState.EXPLORING;
                     break;
                 default:
-                    System.out.println("Commands: list, buy, sell, b");
+                    System.out.println(GameText.LEGENDS_MARKET_COMMANDS_SHORT);
                     break;
             }
         }
     }
 
     private void listMarket(Market market) {
-        System.out.println("Weapons:");
+        System.out.println(GameText.LEGENDS_MARKET_WEAPONS);
         for (int i = 0; i < market.getWeapons().size(); i++) {
             Weapon w = market.getWeapons().get(i);
             System.out.printf("%d) %s lvl%d dmg:%d hands:%d price:%d%n", i, w.getName(), w.getRequiredLevel(),
                     w.getDamage(), w.getHandsRequired(), w.getPrice());
         }
-        System.out.println("Armors:");
+        System.out.println(GameText.LEGENDS_MARKET_ARMORS);
         for (int i = 0; i < market.getArmors().size(); i++) {
             Armor a = market.getArmors().get(i);
             System.out.printf("%d) %s lvl%d red:%d price:%d%n", i, a.getName(), a.getRequiredLevel(),
                     a.getDamageReduction(), a.getPrice());
         }
-        System.out.println("Potions:");
+        System.out.println(GameText.LEGENDS_MARKET_POTIONS);
         for (int i = 0; i < market.getPotions().size(); i++) {
             Potion p = market.getPotions().get(i);
             System.out.printf("%d) %s lvl%d effect:%d stats:%s price:%d%n", i, p.getName(), p.getRequiredLevel(),
                     p.getEffectAmount(), p.getAffectedStats(), p.getPrice());
         }
-        System.out.println("Spells:");
+        System.out.println(GameText.LEGENDS_MARKET_SPELLS);
         for (int i = 0; i < market.getSpells().size(); i++) {
             Spell s = market.getSpells().get(i);
             System.out.printf("%d) %s lvl%d dmg:%d mana:%d price:%d type:%s%n", i, s.getName(),
@@ -302,7 +302,7 @@ public class LegendsGame extends RpgGame {
         if (hero == null) {
             return;
         }
-        System.out.println("Buy which category? weapon/armor/potion/spell");
+        System.out.println(GameText.LEGENDS_MARKET_BUY_WHICH);
         String cat = scanner.nextLine().trim().toLowerCase();
         switch (cat) {
             case "weapon":
@@ -318,7 +318,7 @@ public class LegendsGame extends RpgGame {
                 buyItem(market.getSpells(), hero, market, scanner);
                 break;
             default:
-                System.out.println("Unknown category.");
+                System.out.println(GameText.LEGENDS_MARKET_UNKNOWN_CAT);
                 break;
         }
     }
@@ -328,16 +328,16 @@ public class LegendsGame extends RpgGame {
             Item it = items.get(i);
             System.out.printf("%d) %s lvl%d price:%d%n", i, it.getName(), it.getRequiredLevel(), it.getPrice());
         }
-        System.out.print("Index to buy: ");
+        System.out.print(GameText.LEGENDS_MARKET_INDEX_BUY);
         String line = scanner.nextLine().trim();
         try {
             int idx = Integer.parseInt(line);
             if (idx >= 0 && idx < items.size()) {
                 Item item = items.get(idx);
                 if (market.buy(hero, item)) {
-                    System.out.println("Purchased " + item.getName());
+                    System.out.println(String.format(GameText.LEGENDS_PURCHASED, item.getName()));
                 } else {
-                    System.out.println("Cannot buy (level/gold).");
+                    System.out.println(GameText.LEGENDS_CANNOT_BUY);
                 }
             }
         } catch (NumberFormatException ignored) {
@@ -354,16 +354,16 @@ public class LegendsGame extends RpgGame {
             Item it = items.get(i);
             System.out.printf("%d) %s price:%d%n", i, it.getName(), it.getPrice());
         }
-        System.out.print("Index to sell: ");
+        System.out.print(GameText.LEGENDS_MARKET_INDEX_SELL);
         String line = scanner.nextLine().trim();
         try {
             int idx = Integer.parseInt(line);
             if (idx >= 0 && idx < items.size()) {
                 Item item = items.get(idx);
                 if (market.sell(hero, item)) {
-                    System.out.println("Sold " + item.getName());
+                    System.out.println(String.format(GameText.LEGENDS_SOLD, item.getName()));
                 } else {
-                    System.out.println("Cannot sell.");
+                    System.out.println(GameText.LEGENDS_CANNOT_SELL);
                 }
             }
         } catch (NumberFormatException ignored) {
@@ -393,18 +393,18 @@ public class LegendsGame extends RpgGame {
         if (random.nextDouble() > 0.3) {
             return;
         }
-        System.out.println("A battle begins!");
+        System.out.println(GameText.LEGENDS_BATTLE_BEGINS);
         int highestLevel = party.getHeroes().stream().mapToInt(Hero::getLevel).max().orElse(1);
         List<Monster> foes = monsterFactory.spawnForLevel(monsterPool, highestLevel, party.getHeroes().size());
         if (foes.isEmpty()) {
-            System.out.println("No monsters could be found to match your level. You feel a strange calm...");
+            System.out.println(GameText.LEGENDS_NO_MONSTERS);
             return;
         }
         Battle battle = new Battle(party, foes);
         state = GameState.BATTLE;
         battleLoop(battle);
         if (party.isDefeated()) {
-            System.out.println("Party defeated. Game over.");
+            System.out.println(GameText.LEGENDS_PARTY_DEFEATED);
             System.exit(0);
         } else {
             party.reviveAfterWin();
@@ -419,13 +419,13 @@ public class LegendsGame extends RpgGame {
                     }
                 }
             }
-            System.out.println("Victory! Earned gold and experience.");
+            System.out.println(GameText.LEGENDS_VICTORY);
         }
         state = GameState.EXPLORING;
     }
 
     private void showInventory() {
-        System.out.println("=== INVENTORY ===");
+        System.out.println(GameText.LEGENDS_INVENTORY_TITLE);
         List<Hero> heroes = party.getHeroes();
         for (int i = 0; i < heroes.size(); i++) {
             Hero h = heroes.get(i);
@@ -444,7 +444,7 @@ public class LegendsGame extends RpgGame {
 
     private void printItems(List<? extends Item> items) {
         if (items.isEmpty()) {
-            System.out.println("    (none)");
+            System.out.println(GameText.LEGENDS_NONE);
             return;
         }
         for (int j = 0; j < items.size(); j++) {
@@ -525,7 +525,7 @@ public class LegendsGame extends RpgGame {
             return Optional.empty();
         }
         while (true) {
-            System.out.println("Choose target:");
+                System.out.println(GameText.LEGENDS_CHOOSE_TARGET);
             for (int i = 0; i < alive.size(); i++) {
                 Monster m = alive.get(i);
                 System.out.printf("%d) %s HP:%d/%d DEF:%d%n", i, m.getName(), m.getHealth(), m.getMaxHealth(), m.getDefense());
@@ -551,7 +551,7 @@ public class LegendsGame extends RpgGame {
             return null;
         }
         while (true) {
-            System.out.println("Choose spell:");
+            System.out.println(GameText.LEGENDS_CHOOSE_SPELL);
             for (int i = 0; i < spells.size(); i++) {
                 Spell s = spells.get(i);
                 System.out.printf("%d) %s dmg:%d mana:%d type:%s%n", i, s.getName(), s.getBaseDamage(), s.getManaCost(),
@@ -605,14 +605,14 @@ public class LegendsGame extends RpgGame {
                 .collect(Collectors.toList());
         List<Armor> armors = hero.getInventory().getByType(Armor.class).stream().map(a -> (Armor) a)
                 .collect(Collectors.toList());
-        System.out.println("Equip menu:");
+        System.out.println(GameText.LEGENDS_EQUIP_MENU);
         if (!weapons.isEmpty()) {
-            System.out.println("Weapons:");
+            System.out.println(GameText.LEGENDS_MARKET_WEAPONS);
             for (int i = 0; i < weapons.size(); i++) {
                 Weapon w = weapons.get(i);
                 System.out.printf("%d) %s dmg:%d hands:%d%n", i, w.getName(), w.getDamage(), w.getHandsRequired());
             }
-            System.out.print("Weapon index (blank to skip): ");
+            System.out.print(GameText.LEGENDS_WEAPON_INDEX);
             String line = scanner.nextLine().trim();
             if (!line.isEmpty()) {
                 try {
@@ -626,12 +626,12 @@ public class LegendsGame extends RpgGame {
             }
         }
         if (!armors.isEmpty()) {
-            System.out.println("Armors:");
+            System.out.println(GameText.LEGENDS_MARKET_ARMORS);
             for (int i = 0; i < armors.size(); i++) {
                 Armor a = armors.get(i);
                 System.out.printf("%d) %s red:%d%n", i, a.getName(), a.getDamageReduction());
             }
-            System.out.print("Armor index (blank to skip): ");
+            System.out.print(GameText.LEGENDS_ARMOR_INDEX);
             String line = scanner.nextLine().trim();
             if (!line.isEmpty()) {
                 try {
