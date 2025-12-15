@@ -1,6 +1,6 @@
 /**
  * Strategy interface for anything that can attack another entity.
- * Implemented by Hero and Monster.
+ * Implemented by Hero and Monster; supports polymorphic combat calls.
  */
 public interface Attackable {
 

@@ -5,8 +5,18 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for armor items from a data file.
+ */
 public class ArmorLoader implements DataLoader<Armor> {
 
+    /**
+     * Parses armor data lines: name, price, requiredLevel, damageReduction.
+     *
+     * @param path path to armor data
+     * @return list of Armor templates
+     * @throws IOException if reading fails
+     */
     @Override
     public List<Armor> load(Path path) throws IOException {
         List<Armor> armors = new ArrayList<>();

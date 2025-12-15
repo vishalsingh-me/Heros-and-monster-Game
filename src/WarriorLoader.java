@@ -5,8 +5,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for Warrior hero templates.
+ */
 public class WarriorLoader implements DataLoader<Warrior> {
 
+    /**
+     * Parses warrior data: name, mana, strength, agility, dexterity, money, experience.
+     */
     @Override
     public List<Warrior> load(Path path) throws IOException {
         List<Warrior> warriors = new ArrayList<>();

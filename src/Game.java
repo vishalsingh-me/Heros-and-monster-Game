@@ -1,16 +1,17 @@
 import java.util.Scanner;
 
 /**
- * Generic game abstraction.
- * 
- * Uses the Template Method pattern: run() defines the fixed high-level
- * steps of running a game, while subclasses implement the details.
+ * Generic game abstraction using the Template Method pattern.
+ * run() is final so subclasses define init/loop/shutdown but cannot change the skeleton.
  */
 public abstract class Game {
 
     protected final Scanner scanner;
     protected boolean running = true;
 
+    /**
+     * Wire in a shared Scanner for user input.
+     */
     public Game(Scanner scanner) {
         this.scanner = scanner;
     }

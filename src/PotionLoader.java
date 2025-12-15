@@ -9,8 +9,19 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Loader for potion items from a data file.
+ * Keeps parsing concerns out of game logic.
+ */
 public class PotionLoader implements DataLoader<Potion> {
 
+    /**
+     * Parses a potion file: name, price, requiredLevel, effectAmount, and affected stats.
+     *
+     * @param path path to potion data
+     * @return list of Potion templates
+     * @throws IOException if reading fails
+     */
     @Override
     public List<Potion> load(Path path) throws IOException {
         List<Potion> potions = new ArrayList<>();

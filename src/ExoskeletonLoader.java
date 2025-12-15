@@ -5,8 +5,15 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for Exoskeleton templates from data files.
+ */
 public class ExoskeletonLoader implements DataLoader<Exoskeleton> {
 
+    /**
+     * Parses an exoskeleton data file into template objects.
+     * Skips comments/blank lines; infers health from level and splits damage range.
+     */
     @Override
     public List<Exoskeleton> load(Path path) throws IOException {
         List<Exoskeleton> exoskeletons = new ArrayList<>();

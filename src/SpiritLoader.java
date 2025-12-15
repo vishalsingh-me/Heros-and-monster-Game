@@ -5,8 +5,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for Spirit monster templates.
+ */
 public class SpiritLoader implements DataLoader<Spirit> {
 
+    /**
+     * Parses a spirit data file into Spirit templates, skipping comments/blank lines.
+     */
     @Override
     public List<Spirit> load(Path path) throws IOException {
         List<Spirit> spirits = new ArrayList<>();

@@ -5,15 +5,8 @@ import java.util.List;
 import java.util.Scanner;
 
 /**
- * Entry point / game hub for:
- *  - Legends: Monsters and Heroes
- *  - Legends of Valor
- *
- * This version removes the old DataLoader usage and delegates
- * loading to HeroFactory / MarketFactory / LegendsGame / ValorGame.
- * It is compatible with Main.start(), which calls:
- *
- *   new GameLauncher().start();
+ * Game hub for selecting and launching either Monsters & Heroes or Legends of Valor.
+ * Centralizes data loading via HeroFactory/MarketFactory and reuses a single Scanner.
  */
 public class GameLauncher {
 
@@ -21,6 +14,9 @@ public class GameLauncher {
     private final HeroFactory heroFactory;
     private final MarketFactory marketFactory;
 
+    /**
+     * Constructs the launcher and shared factories/scanner.
+     */
     public GameLauncher() {
         this.scanner = new Scanner(System.in);
         this.heroFactory = new HeroFactory();
@@ -38,6 +34,9 @@ public class GameLauncher {
     // GAME HUB LOOP
     // ------------------------------------------------------------------
 
+    /**
+     * Displays the hub menu until the player chooses to exit.
+     */
     public void runGameHub() {
         boolean exit = false;
         while (!exit) {
@@ -77,10 +76,8 @@ public class GameLauncher {
     // ------------------------------------------------------------------
 
     /**
-     * Your Monsters & Heroes game already knows how to load all data
-     * (heroes, monsters, market, map) inside LegendsGame itself.
-     *
-     * So we just instantiate LegendsGame and run it.
+     * Launches the classic Legends: Monsters and Heroes game.
+     * LegendsGame handles its own data loading internally.
      */
     private void startMonstersAndHeroes() {
         LegendsGame mhGame = new LegendsGame();
@@ -91,6 +88,9 @@ public class GameLauncher {
     // LEGENDS OF VALOR
     // ------------------------------------------------------------------
 
+    /**
+     * Loads heroes/market, prompts for three heroes, and starts Legends of Valor.
+     */
     private void startLegendsOfValor() {
         try {
             // Load heroes using HeroFactory (same data files)
@@ -133,9 +133,7 @@ public class GameLauncher {
     }
 
     /**
-     * Simple, safe hero selection for Legends of Valor.
-     * You can later swap this out with your fancy table-based
-     * selection UI, but this version compiles and is rubric-safe.
+     * Simple, safe hero selection for Legends of Valor. Prevents duplicates, allows quit.
      */
     private List<Hero> selectThreeHeroesLoV(List<Hero> allHeroes) {
         List<Hero> chosen = new ArrayList<Hero>();

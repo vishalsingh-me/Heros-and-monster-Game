@@ -5,8 +5,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for IceSpell items from a data file.
+ */
 public class IceSpellLoader implements DataLoader<IceSpell> {
 
+    /**
+     * Parses ice spell data: name, price, requiredLevel, damage, manaCost, plus a debuff amount.
+     */
     @Override
     public List<IceSpell> load(Path path) throws IOException {
         List<IceSpell> spells = new ArrayList<>();

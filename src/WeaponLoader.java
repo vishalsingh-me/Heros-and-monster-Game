@@ -5,8 +5,18 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for weapon items from a data file.
+ */
 public class WeaponLoader implements DataLoader<Weapon> {
 
+    /**
+     * Parses weapon data lines: name, price, requiredLevel, damage, hands.
+     *
+     * @param path path to weapon data
+     * @return list of Weapon templates
+     * @throws IOException if reading fails
+     */
     @Override
     public List<Weapon> load(Path path) throws IOException {
         List<Weapon> weapons = new ArrayList<>();

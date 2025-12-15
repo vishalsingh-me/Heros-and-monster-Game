@@ -5,8 +5,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for Sorcerer hero templates.
+ */
 public class SorcererLoader implements DataLoader<Sorcerer> {
 
+    /**
+     * Parses sorcerer data: name, mana, strength, agility, dexterity, money, experience.
+     */
     @Override
     public List<Sorcerer> load(Path path) throws IOException {
         List<Sorcerer> sorcerers = new ArrayList<>();

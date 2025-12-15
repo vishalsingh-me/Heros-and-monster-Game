@@ -1,3 +1,6 @@
+/**
+ * Lane enum for Valor map columns.
+ */
 public enum Lane {
     TOP,
     MID,

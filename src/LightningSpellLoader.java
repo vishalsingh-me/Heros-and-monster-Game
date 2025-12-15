@@ -5,8 +5,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for LightningSpell items from a data file.
+ */
 public class LightningSpellLoader implements DataLoader<LightningSpell> {
 
+    /**
+     * Parses lightning spell data: name, price, requiredLevel, damage, manaCost, plus debuff amount.
+     */
     @Override
     public List<LightningSpell> load(Path path) throws IOException {
         List<LightningSpell> spells = new ArrayList<>();

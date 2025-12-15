@@ -9,6 +9,9 @@ public abstract class RpgGame {
 
     protected final Scanner scanner;
 
+    /**
+     * Provides a shared scanner for child games; defaults to System.in when null is passed.
+     */
     protected RpgGame(Scanner scanner) {
         if (scanner != null) {
             this.scanner = scanner;

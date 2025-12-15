@@ -5,8 +5,20 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for Dragon templates from a data file.
+ * Centralizes parsing so factories can just call load.
+ */
 public class DragonLoader implements DataLoader<Dragon> {
 
+    /**
+     * Reads a dragon file and parses each line into a Dragon template.
+     * Skips comments/blank lines; infers max health from level.
+     *
+     * @param path file path to dragon data
+     * @return list of parsed Dragon objects
+     * @throws IOException if reading fails
+     */
     @Override
     public List<Dragon> load(Path path) throws IOException {
         List<Dragon> dragons = new ArrayList<>();

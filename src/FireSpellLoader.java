@@ -5,8 +5,15 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for FireSpell items from a data file.
+ */
 public class FireSpellLoader implements DataLoader<FireSpell> {
 
+    /**
+     * Parses fire spell data: name, price, requiredLevel, damage, manaCost.
+     * Adds a simple debuff magnitude derived from damage.
+     */
     @Override
     public List<FireSpell> load(Path path) throws IOException {
         List<FireSpell> spells = new ArrayList<>();

@@ -1,5 +1,9 @@
 import java.util.Random;
 
+/**
+ * Valor game map: 8x8 grid with three lanes, nexus rows, lane walls, and random terrain.
+ * Responsible for generating the terrain and rendering with block-based ASCII tiles.
+ */
 public class ValorMap {
     private static final int SIZE = 8;
 
@@ -21,6 +25,9 @@ public class ValorMap {
         initializeGrid();
     }
 
+    /**
+     * Sets up lane walls, nexus rows, and random terrain for rows 1–6.
+     */
     private void initializeGrid() {
         for (int r = 0; r < SIZE; r++) {
             for (int c = 0; c < SIZE; c++) {
@@ -59,7 +66,7 @@ public class ValorMap {
         return grid[row][col];
     }
 
-    /** 
+    /**
      * Small helper used by ValorGame: returns true if the given
      * coordinates refer to a Nexus tile (hero or monster nexus).
      */

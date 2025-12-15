@@ -7,17 +7,31 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Scanner;
 import java.util.stream.Collectors;
+
+/**
+ * Original Legends: Monsters and Heroes game loop (grid exploration, market, battles).
+ * I keep everything here: data loading, hero selection, map setup, exploration, market, and battle flow.
+ */
 public class LegendsGame extends RpgGame {
 
+        /**
+         * Default constructor uses its own Scanner.
+         */
         public LegendsGame() {
         this(new Scanner(System.in));
     }
 
+    /**
+     * Constructor allowing a shared Scanner.
+     */
     public LegendsGame(Scanner scanner) {
         super(scanner);
     }
 
 
+    /**
+     * Simple state enum for the classic game loop.
+     */
     public enum GameState { EXPLORING, MAP, MARKET, INVENTORY, BATTLE }
 
     private final HeroFactory heroFactory = new HeroFactory();
@@ -36,6 +50,9 @@ public class LegendsGame extends RpgGame {
         game.run();
     }
 
+    /**
+     * Main entry: load data, intro, select heroes, setup map, then loop.
+     */
     public void run() {
         try {
             loadData();
@@ -48,6 +65,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Prints intro and waits for Enter.
+     */
     private void printIntro() {
         System.out.println(GameText.LEGENDS_BORDER);
         System.out.println(GameText.LEGENDS_TITLE);
@@ -66,6 +86,9 @@ public class LegendsGame extends RpgGame {
         new java.util.Scanner(System.in).nextLine();
     }
 
+    /**
+     * Loads heroes, monsters, and market stock from disk.
+     */
     private void loadData() throws IOException {
         heroTemplates = heroFactory.loadAll(
                 Paths.get("Data/Paladins.txt"),
@@ -88,6 +111,9 @@ public class LegendsGame extends RpgGame {
         market = new Market(stock.getWeapons(), stock.getArmors(), stock.getPotions(), stock.getSpells());
     }
 
+    /**
+     * Prompts player to pick up to 3 heroes from templates; defaults first if none chosen.
+     */
     private void selectHeroes() {
         Scanner scanner = new Scanner(System.in);
         List<Hero> chosen = new ArrayList<>();
@@ -122,6 +148,9 @@ public class LegendsGame extends RpgGame {
         party = new Party(chosen);
     }
 
+    /**
+     * Clones a hero template into a fresh instance (avoids mutating originals).
+     */
     private Hero cloneHero(Hero template) {
         if (template instanceof Warrior) {
             Warrior w = (Warrior) template;
@@ -141,10 +170,16 @@ public class LegendsGame extends RpgGame {
         throw new IllegalArgumentException("Unknown hero type");
     }
 
+    /**
+     * Builds the classic 8x8 map with markets and inaccessible tiles.
+     */
     private void setupMap() {
         map = GameMap.generateDefault(8, market);
     }
 
+    /**
+     * Core exploration loop handling movement, map, inventory, market, and quit.
+     */
     private void gameLoop() {
         Scanner scanner = new Scanner(System.in);
         System.out.println(GameText.LEGENDS_GAME_START);
@@ -221,6 +256,9 @@ public class LegendsGame extends RpgGame {
         System.out.println(GameText.LEGENDS_GOODBYE);
     }
 
+    /**
+     * Attempts to move hero on the world map; may trigger market or battle.
+     */
     private void attemptMove(int dRow, int dCol) {
         if (!map.move(dRow, dCol)) {
             System.out.println(GameText.LEGENDS_CANNOT_MOVE);
@@ -241,6 +279,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Runs the market interaction loop (list/buy/sell/exit).
+     */
     private void enterMarket(Market market) {
         Scanner scanner = new Scanner(System.in);
         boolean shopping = true;
@@ -270,6 +311,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Prints available items in the market by category.
+     */
     private void listMarket(Market market) {
         System.out.println(GameText.LEGENDS_MARKET_WEAPONS);
         for (int i = 0; i < market.getWeapons().size(); i++) {
@@ -297,6 +341,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Handles buying flow for a chosen hero and category.
+     */
     private void doBuy(Market market, Scanner scanner) {
         Hero hero = chooseHero(scanner);
         if (hero == null) {
@@ -323,6 +370,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Generic item purchase helper for a given hero.
+     */
     private <T extends Item> void buyItem(List<T> items, Hero hero, Market market, Scanner scanner) {
         for (int i = 0; i < items.size(); i++) {
             Item it = items.get(i);
@@ -344,6 +394,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Handles selling flow for a chosen hero.
+     */
     private void doSell(Market market, Scanner scanner) {
         Hero hero = chooseHero(scanner);
         if (hero == null) {
@@ -370,6 +423,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Prompts for a hero index and returns that hero or null if invalid.
+     */
     private Hero chooseHero(Scanner scanner) {
         List<Hero> heroes = party.getHeroes();
         for (int i = 0; i < heroes.size(); i++) {
@@ -389,6 +445,9 @@ public class LegendsGame extends RpgGame {
         return null;
     }
 
+    /**
+     * Random chance to trigger a battle when on a common tile.
+     */
     private void maybeBattle() {
         if (random.nextDouble() > 0.3) {
             return;
@@ -424,6 +483,9 @@ public class LegendsGame extends RpgGame {
         state = GameState.EXPLORING;
     }
 
+    /**
+     * Prints each hero’s inventory grouped by type.
+     */
     private void showInventory() {
         System.out.println(GameText.LEGENDS_INVENTORY_TITLE);
         List<Hero> heroes = party.getHeroes();
@@ -442,6 +504,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Helper to print a list of items or a none marker.
+     */
     private void printItems(List<? extends Item> items) {
         if (items.isEmpty()) {
             System.out.println(GameText.LEGENDS_NONE);
@@ -454,6 +519,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Runs the turn-based battle until either side is done.
+     */
     private void battleLoop(Battle battle) {
         Scanner scanner = new Scanner(System.in);
         while (!battle.isOver()) {
@@ -497,6 +565,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Shows battle menu and returns a validated choice.
+     */
     private int promptBattleChoice(Scanner scanner, Hero hero) {
         while (true) {
             System.out.printf("Hero %s turn:%n", hero.getName());
@@ -518,6 +589,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Prompts for a living monster target.
+     */
     private Optional<Monster> battleTarget(Battle battle, Scanner scanner) {
         List<Monster> alive = battle.getMonsters().stream().filter(m -> !m.isFainted())
                 .collect(Collectors.toList());
@@ -543,6 +617,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Lets the player pick a spell from hero inventory.
+     */
     private Spell chooseSpell(Hero hero, Scanner scanner) {
         List<Spell> spells = hero.getInventory().getByType(Spell.class).stream().map(s -> (Spell) s)
                 .collect(Collectors.toList());
@@ -570,6 +647,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Lets the player pick and consume a potion.
+     */
     private void usePotion(Hero hero, Scanner scanner) {
         List<Potion> potions = hero.getInventory().getByType(Potion.class).stream().map(p -> (Potion) p)
                 .collect(Collectors.toList());
@@ -600,6 +680,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Lets the player equip a weapon/armor if available.
+     */
     private void equip(Hero hero, Scanner scanner) {
         List<Weapon> weapons = hero.getInventory().getByType(Weapon.class).stream().map(w -> (Weapon) w)
                 .collect(Collectors.toList());
@@ -649,6 +732,9 @@ public class LegendsGame extends RpgGame {
         }
     }
 
+    /**
+     * Chooses a random living hero for monsters to target.
+     */
     private Hero randomAliveHero() {
         List<Hero> alive = party.aliveHeroes();
         if (alive.isEmpty()) {

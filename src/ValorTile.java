@@ -1,3 +1,6 @@
+/**
+ * Valor map tile: tracks terrain type plus optional hero/monster occupancy and rendering.
+ */
 public class ValorTile extends Tile {
     private TileType type;
     private Hero hero;       // Tracks the hero on this tile

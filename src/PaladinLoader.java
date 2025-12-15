@@ -5,8 +5,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Loader for Paladin hero templates.
+ */
 public class PaladinLoader implements DataLoader<Paladin> {
 
+    /**
+     * Parses paladin data: name, mana, strength, agility, dexterity, money, experience.
+     */
     @Override
     public List<Paladin> load(Path path) throws IOException {
         List<Paladin> paladins = new ArrayList<>();

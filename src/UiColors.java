@@ -1,6 +1,6 @@
-// UiColors.java
-// Simple ANSI color/style helpers for a nicer terminal UI.
-
+/**
+ * Simple ANSI color/style helpers for a nicer terminal UI.
+ */
 public final class UiColors {
 
     // Reset

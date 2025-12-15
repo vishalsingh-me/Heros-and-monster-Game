@@ -2,24 +2,38 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+/**
+ * Small battle helper for the classic Legends: Monsters & Heroes game.
+ * Handles basic attack/spell exchanges between heroes and monsters without the Valor lane rules.
+ */
 public class Battle {
     private final Party party;
     private final List<Monster> monsters;
     private final Random random = new Random();
 
+    /**
+     * Creates a battle with the current party and a list of monsters (copied defensively).
+     */
     public Battle(Party party, List<Monster> monsters) {
         this.party = party;
-        this.monsters = new ArrayList<>(monsters);
+        this.monsters = new ArrayList<Monster>(monsters);
     }
 
+    /**
+     * @return true if either the party is defeated or all monsters have fainted.
+     */
     public boolean isOver() {
         return party.isDefeated() || monsters.stream().allMatch(Monster::isFainted);
     }
 
+    /** @return current monster list for this battle */
     public List<Monster> getMonsters() {
         return monsters;
     }
 
+    /**
+     * Hero basic attack: includes weapon damage, defense reduction, and dodge check.
+     */
     public void heroAttack(Hero hero, Monster target) {
         if (hero == null || target == null || hero.isFainted() || target.isFainted()) {
             return;
@@ -38,6 +52,9 @@ public class Battle {
                 hero.getName(), target.getName(), dealt, before, target.getHealth());
     }
 
+    /**
+     * Monster basic attack: rolls damage range, subtracts armor, and checks hero dodge.
+     */
     public void monsterAttack(Monster monster, Hero target) {
         if (monster == null || target == null || monster.isFainted() || target.isFainted()) {
             return;
@@ -58,6 +75,9 @@ public class Battle {
                 monster.getName(), target.getName(), dealt, before, target.getHealth());
     }
 
+    /**
+     * Hero casts a spell: checks mana, dodge, applies damage and spell-specific debuff.
+     */
     public void castSpell(Hero hero, Spell spell, Monster target) {
         if (hero == null || spell == null || target == null || hero.isFainted() || target.isFainted()) {
             return;
@@ -81,6 +101,9 @@ public class Battle {
                 spell.getDebuffType());
     }
 
+    /**
+     * Applies the spell's debuff based on its declared type.
+     */
     private void applyDebuff(Spell spell, Monster target) {
         String type = spell.getDebuffType();
         double amount = spell.getDebuffAmount();
@@ -101,10 +124,12 @@ public class Battle {
         }
     }
 
+    /** Roll against a monster dodge chance expressed as a percentage. */
     private boolean rollDodge(double dodgeChance) {
         return random.nextDouble() < (dodgeChance / 100.0);
     }
 
+    /** Roll against a hero dodge chance derived from agility (capped at 50%). */
     private boolean rollDodgeChance(int agility) {
         double chance = Math.min(0.5, agility / 1000.0);
         return random.nextDouble() < chance;

@@ -1,11 +1,23 @@
 import java.util.Random;
 
+/**
+ * Grid/map for the classic Legends: Monsters and Heroes game.
+ * Tracks the hero position, handles movement validation, rendering, and random generation.
+ */
 public class GameMap {
     private final Tile[][] grid;
     private int heroRow;
     private int heroCol;
     private final Random random = new Random();
 
+    /**
+     * Builds a map with a fixed size and starting position.
+     *
+     * @param size      map size (square)
+     * @param grid      pre-built grid of tiles
+     * @param startRow  starting hero row
+     * @param startCol  starting hero col
+     */
     public GameMap(int size, Tile[][] grid, int startRow, int startCol) {
         if (size <= 0 || grid == null || grid.length != size || grid[0].length != size) {
             throw new IllegalArgumentException("Invalid map configuration");
@@ -18,6 +30,7 @@ public class GameMap {
         this.heroCol = startCol;
     }
 
+    /** @return tile where the hero currently stands */
     public Tile getCurrentTile() {
         return grid[heroRow][heroCol];
     }
@@ -30,6 +43,11 @@ public class GameMap {
         return heroCol;
     }
 
+    /**
+     * Attempts to move the hero by the given delta; checks bounds and accessibility.
+     *
+     * @return true if the move succeeded
+     */
     public boolean move(int dRow, int dCol) {
         int newRow = heroRow + dRow;
         int newCol = heroCol + dCol;
@@ -49,6 +67,9 @@ public class GameMap {
         return row >= 0 && col >= 0 && row < grid.length && col < grid[0].length;
     }
 
+    /**
+     * Renders the map with borders and a legend.
+     */
     public void render() {
         final String RESET = "\u001B[0m";
         final String CYAN = "\u001B[36m";
@@ -125,6 +146,10 @@ public class GameMap {
         return sb.toString();
     }
 
+    /**
+     * Generates a random map with commons, markets, and some inaccessible tiles,
+     * ensuring the start tile is accessible with at least two neighbors.
+     */
     public static GameMap generateDefault(int size, Market market) {
         if (size <= 0) {
             throw new IllegalArgumentException("Size must be positive");
